@@ -1,14 +1,20 @@
 const app = require("./app");
 const config = require("./config/config");
 const logger = require("./config/logger");
+const pool = require("./pool");
+const databaseConnectionObject = require("./config/databaseConnectionObject");
 
 // Express usual app.listen()
-const server = app.listen(config.port, () => {
-  logger.info(`
-      ################################################
-      🚀 Server listening on port: ${config.port} 🚀
-      ################################################
-  `);
+let server;
+pool.connect(databaseConnectionObject).then(() => {
+  logger.info("Connected to PostgreSQL server");
+  server = app.listen(config.port, () => {
+    logger.info(`
+        ################################################
+        🚀 Server listening on port: ${config.port} 🚀
+        ################################################
+    `);
+  });
 });
 
 const exithandler = () => {
