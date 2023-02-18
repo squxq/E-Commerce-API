@@ -11,6 +11,10 @@ const defaultRoutes = [
     path: "/auth",
     route: authRoute,
   },
+  {
+    path: "/products",
+    route: productsRoute,
+  },
 ];
 
 const devRoutes = [

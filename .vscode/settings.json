@@ -1,0 +1,13 @@
+{
+  "sqltools.connections": [
+    {
+      "previewLimit": 50,
+      "server": "e-commerce-api-rds-instance.cxcmcghvbbkd.eu-central-1.rds.amazonaws.com",
+      "port": 5432,
+      "driver": "PostgreSQL",
+      "name": "E-Commerce-API-RDS-Instance",
+      "database": "products",
+      "username": "admin"
+    }
+  ]
+}

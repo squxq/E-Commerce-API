@@ -1,5 +1,5 @@
 const Polyglot = require("node-polyglot");
-const { messages } = require("../config/i18n");
+const messages = require("../config/i18n");
 
 const startPolyglot = (req, res, next) => {
   // get the locale from express-locale

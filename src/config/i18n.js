@@ -1,6 +1,6 @@
-module.exports = ["ar", "en"];
+// module.exports = ["ar", "en"];
 
-module.exports = {
+const messages = {
   en: {
     profileImageRequired: "Profile image ss required, please upload an image!",
     fieldsRequired: "All fields are required.",
@@ -222,3 +222,5 @@ module.exports = {
     successfulGetDiscount: "تم العثور علي الخصم بنجاح.",
   },
 };
+
+module.exports = messages;

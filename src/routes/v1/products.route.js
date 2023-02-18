@@ -5,6 +5,6 @@ const productsController = require("../../controllers/products.controller");
 
 const router = express.Router();
 
-router.post("/create", validate(productsValidation.create), productsController.create);
+router.post("/create", validate(productsValidation.createCategory), productsController.createCategory);
 
 module.exports = router;
