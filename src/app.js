@@ -63,9 +63,8 @@ if (config.env === "production") {
 app.use("/api/v1", routes);
 // app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(docs));
 
-// send back a 404 error for any unknown api request
-app.use((req, res, next) => {
-  next(new ApiError(httpStatus.NOT_FOUND, "Not found"));
+app.all(`"*"`, (req, res, next) => {
+  next(new ApiError(`Can't find ${req.originalUrl} on this server!`, httpStatus[404]));
 });
 
 // app.use(errorConverter)

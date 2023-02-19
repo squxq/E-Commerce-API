@@ -24,10 +24,14 @@ const envVarsSchema = Joi.object()
     SMTP_PASSWORD: Joi.string().description("password for email server"),
     EMAIL_FROM: Joi.string().description("the from field in the emails sent by the app"),
     DATABASE_HOST: Joi.string().required().description("Database host"),
-    DATABASE_PORT: Joi.number().default(5432),
+    DATABASE_PORT: Joi.number().required().default(5432),
     DATABASE_NAME: Joi.string().required().description("Database name"),
     DATABASE_USER: Joi.string().required().description("Database user"),
     DATABASE_PASSWORD: Joi.string().required().description("Database password"),
+    CLOUD_NAME: Joi.string().required().description("Cloud name to store media files"),
+    CLOUD_API_KEY: Joi.string().required().description("Cloud api key for remote access"),
+    CLOUD_API_SECRET: Joi.string().required().description("Cloud api secret for authentication"),
+    CLOUD_PROJECT: Joi.string().default("default-project").description("Master name of the cloud project to be created"),
   })
   .unknown();
 
@@ -72,5 +76,11 @@ module.exports = {
     name: envVars.DATABASE_NAME,
     user: envVars.DATABASE_USER,
     password: envVars.DATABASE_PASSWORD,
+  },
+  cloud: {
+    name: envVars.CLOUD_NAME,
+    apiKey: envVars.CLOUD_API_KEY,
+    apiSecret: envVars.CLOUD_API_SECRET,
+    project: envVars.CLOUD_PROJECT,
   },
 };

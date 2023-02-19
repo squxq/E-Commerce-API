@@ -3,6 +3,8 @@ CREATE TABLE product_category(
   parent_category_id TEXT REFERENCES product_category(id),
   category_name TEXT NOT NULL
 );
+ALTER TABLE IF EXISTS product_category ADD COLUMN IF NOT EXISTS category_image TEXT;
+ALTER TABLE IF EXISTS product_category ADD COLUMN IF NOT EXISTS category_image_id TEXT;
 
 CREATE TABLE product(
   id INTEGER PRIMARY KEY,

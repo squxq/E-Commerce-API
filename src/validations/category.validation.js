@@ -5,6 +5,7 @@ const createCategory = {
     categoryName: Joi.string().required(),
     parentCategoryId: Joi.string(),
   }),
+  file: Joi.object(),
 };
 
 module.exports = {
