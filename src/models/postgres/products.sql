@@ -5,6 +5,8 @@ CREATE TABLE product_category(
 );
 ALTER TABLE IF EXISTS product_category ADD COLUMN IF NOT EXISTS category_image TEXT;
 ALTER TABLE IF EXISTS product_category ADD COLUMN IF NOT EXISTS category_image_id TEXT;
+ALTER TABLE IF EXISTS product_category ADD COLUMN IF NOT EXISTS category_description TEXT;
+ALTER TABLE IF EXISTS product_category DROP COLUMN IF EXISTS category_image_id;
 
 CREATE TABLE product(
   id INTEGER PRIMARY KEY,

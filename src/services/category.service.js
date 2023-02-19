@@ -19,6 +19,25 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file) =
   } else if (!file) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
   }
+  // check for duplicate names
+  let result;
+  if (!parentCategoryId) {
+    result = await pool.query(
+      "SELECT array_agg(category_name) AS names FROM product_category WHERE parent_category_id IS NULL"
+    );
+  } else {
+    result = await pool.query(
+      "SELECT array_agg(category_name) AS names FROM product_category WHERE parent_category_id = ($1)",
+      [parentCategoryId]
+    );
+  }
+
+  result.rows[0].names.forEach((name) => {
+    if (name === categoryName) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Duplicate category name provided");
+    }
+  });
+
   // uuid for projects db
   const categoryId = uuidv4().toString();
 
@@ -29,12 +48,12 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file) =
   image = await uploadImage(image.content, "category", categoryName);
 
   // create category in product_category
-  const result = pool.query(
-    "INSERT INTO product_category(id, parent_category_id, category_name, category_image_id, category_image) VALUES($1, $2, $3, $4, $5) RETURNING *",
-    [categoryId, parentCategoryId, categoryName, image.public_id, image.secure_url]
+  const dbOuput = pool.query(
+    "INSERT INTO product_category(id, parent_category_id, category_name, category_image) VALUES($1, $2, $3, $4) RETURNING id",
+    [categoryId, parentCategoryId, categoryName, image.secure_url]
   );
 
-  return result;
+  return dbOuput;
 });
 
 module.exports = {

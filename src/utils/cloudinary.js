@@ -1,4 +1,5 @@
 const cloudinary = require("cloudinary");
+const hash = require("object-hash");
 const catchAsync = require("./catchAsync");
 const config = require("../config/config");
 
@@ -22,12 +23,17 @@ const uploadImage = catchAsync(async (image, feature, name) => {
   // folder name
   const folderName = `${feature.charAt(0).toUpperCase() + feature.slice(1)}/${formattedName}`;
 
+  const etag = hash(image, { algorithm: "md5" });
   // upload options
   const options = {
     folder: `${config.cloud.project ? config.cloud.project : "default-project"}/${folderName}`,
+    resource_type: "image",
+    public_id: etag,
+    phash: true,
     use_filename: true,
     unique_filename: true,
-    overwrite: false,
+    overwrite: true,
+    invalidate: true,
     crop: "fit",
     format: "webp",
   };
