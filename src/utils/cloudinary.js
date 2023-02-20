@@ -11,18 +11,7 @@ cloudinary.config({
 });
 
 // Uploads an image to cloudinary
-const uploadImage = catchAsync(async (image, feature, name) => {
-  const formattedName = name
-    .trim()
-    .split(" ")
-    .map((word) => {
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(" ");
-
-  // folder name
-  const folderName = `${feature.charAt(0).toUpperCase() + feature.slice(1)}/${formattedName}`;
-
+const uploadImage = catchAsync(async (image, folderName) => {
   const etag = hash(image, { algorithm: "md5" });
   // upload options
   const options = {

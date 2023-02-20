@@ -1,13 +1,11 @@
 const app = require("./app");
 const config = require("./config/config");
 const logger = require("./config/logger");
-const pool = require("./pool");
-const databaseConnectionObject = require("./config/databaseConnectionObject");
+const prisma = require("./config/db");
 
 // Express usual app.listen()
 let server;
-pool.connect(databaseConnectionObject).then(() => {
-  logger.info("Connected to PostgreSQL server");
+prisma.$connect().then(() => {
   server = app.listen(config.port, () => {
     logger.info(`
         ################################################
