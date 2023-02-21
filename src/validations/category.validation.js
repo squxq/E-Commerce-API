@@ -3,7 +3,7 @@ const Joi = require("joi");
 const createCategory = {
   body: Joi.object().keys({
     categoryName: Joi.string().required(),
-    parentCategoryId: Joi.string(),
+    parentCategoryId: Joi.string().guid({ version: ["uuidv4", "uuidv5"] }),
   }),
   file: Joi.object().keys({
     fieldname: Joi.string().required(),
@@ -34,7 +34,16 @@ const updateCategory = {
   }),
 };
 
+const deleteCategory = {
+  params: Joi.object().keys({
+    categoryId: Joi.string()
+      .required()
+      .guid({ version: ["uuidv4", "uuidv5"] }),
+  }),
+};
+
 module.exports = {
   createCategory,
   updateCategory,
+  deleteCategory,
 };

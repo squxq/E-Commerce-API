@@ -44,7 +44,23 @@ const updateCategory = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * @ Delete Category Controller
+ * @param { Object } req
+ * @param { Object } res
+ * @property { String } req.params.categoryId
+ */
+const deleteCategory = catchAsync(async (req, res) => {
+  await categoryService.deleteCategory(req.params.categoryId);
+
+  return res.status(httpStatus.OK).json({
+    type: "Success",
+    message: [req.polyglot.t("successfulCategoryDelete")],
+  });
+});
+
 module.exports = {
   createCategory,
   updateCategory,
+  deleteCategory,
 };

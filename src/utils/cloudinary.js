@@ -3,7 +3,7 @@ const hash = require("object-hash");
 const catchAsync = require("./catchAsync");
 const config = require("../config/config");
 
-cloudinary.config({
+cloudinary.v2.config({
   cloud_name: config.cloud.name,
   api_key: config.cloud.apiKey,
   api_secret: config.cloud.apiSecret,
@@ -11,16 +11,16 @@ cloudinary.config({
 });
 
 // Uploads an image to cloudinary
-const uploadImage = catchAsync(async (image, folderName) => {
+const uploadImage = catchAsync(async (image, folderName, fileName) => {
   const etag = hash(image, { algorithm: "md5" });
   // upload options
   const options = {
     folder: `${config.cloud.project ? config.cloud.project : "default-project"}/${folderName}`,
     resource_type: "image",
-    public_id: etag,
+    public_id: `${fileName}_${etag}`,
     phash: true,
     use_filename: true,
-    unique_filename: true,
+    unique_filename: false,
     overwrite: true,
     invalidate: true,
     crop: "fit",
@@ -32,6 +32,14 @@ const uploadImage = catchAsync(async (image, folderName) => {
   return upload;
 });
 
+const deleteImage = catchAsync(async (publicId) => {
+  const result = await cloudinary.v2.uploader.destroy(publicId, (error, output) => {
+    return output;
+  });
+  return result;
+});
+
 module.exports = {
   uploadImage,
+  deleteImage,
 };

@@ -7,6 +7,7 @@ const { singleFile } = require("../../utils/multer");
 const router = express.Router();
 
 router.post("/create", singleFile("image"), validate(categoryValidation.createCategory), categoryController.createCategory);
-router.post("/update", singleFile("image"), validate(categoryValidation.updateCategory), categoryController.updateCategory);
+router.patch("/update", singleFile("image"), validate(categoryValidation.updateCategory), categoryController.updateCategory);
+router.delete("/delete/:categoryId", validate(categoryValidation.deleteCategory), categoryController.deleteCategory);
 
 module.exports = router;
