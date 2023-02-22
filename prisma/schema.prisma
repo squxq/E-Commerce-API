@@ -17,4 +17,67 @@ model product_category {
   updatedAt              DateTime           @updatedAt
   product_category       product_category?  @relation("product_categoryToproduct_category", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_product_category product_category[] @relation("product_categoryToproduct_category")
+  products               product[]
+  variation              variation[]
+}
+
+model product {
+  id           String           @id @default(uuid())
+  category_id  String
+  name         String
+  description  String
+  image        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  category     product_category @relation(fields: [category_id], references: [id])
+  product_item product_item[]
+
+  @@unique([category_id, name])
+}
+
+model product_item {
+  id                    String                  @id @default(uuid())
+  product_id            String
+  SKU                   String
+  QIS                   Int
+  images                String[]
+  price                 Decimal
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  product               product                 @relation(fields: [product_id], references: [id])
+  product_configuration product_configuration[]
+}
+
+model variation {
+  id                String             @id @default(uuid())
+  category_id       String
+  name              String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  category          product_category   @relation(fields: [category_id], references: [id])
+  variation_options variation_option[]
+
+  @@unique([category_id, name])
+}
+
+model variation_option {
+  id                    String                  @id @default(uuid())
+  variation_id          String
+  value                 String
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  variation             variation               @relation(fields: [variation_id], references: [id])
+  product_configuration product_configuration[]
+
+  @@unique([variation_id, value])
+}
+
+model product_configuration {
+  id                  String           @id @default(uuid())
+  product_item_id     String
+  variation_option_id String
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  product_item        product_item     @relation(fields: [product_item_id], references: [id])
+  variation_option    variation_option @relation(fields: [variation_option_id], references: [id])
 }

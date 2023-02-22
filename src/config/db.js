@@ -1,4 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
+const logger = require("./logger");
+const prismaMiddleware = require("../middlewares/prisma");
 
 const prisma = new PrismaClient({
   log: [
@@ -19,12 +21,29 @@ const prisma = new PrismaClient({
       level: "warn",
     },
   ],
+  errorFormat: "colorless",
 });
 
-prisma.$on("query", (e) => {
-  console.log(`Query: ${e.query}`);
-  console.log(`Params: ${e.params}`);
-  console.log(`Duration: ${e.duration}ms`);
+// Logs
+prisma.$on("beforeExit", async (e) => {
+  logger.warn(`Connection between server and database closed. Event: ${e}`);
 });
+
+prisma.$on("query", async (e) => {
+  logger.info(`Query: ${e.query}`);
+  logger.info(`Params: ${e.params}`);
+  logger.info(`Duration: ${e.duration}ms`);
+});
+
+prisma.$on("error", async (e) => {
+  logger.error(e);
+});
+
+prisma.$on("warn", async (e) => {
+  logger.warn(e);
+});
+
+// prisma Middleware
+prisma.$use(prismaMiddleware);
 
 module.exports = prisma;

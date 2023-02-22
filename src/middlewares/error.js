@@ -9,7 +9,7 @@ const errorConverter = (err, req, res, next) => {
   if (!(error instanceof ApiError)) {
     const statusCode =
       error.statusCode || error instanceof mongoose.Error ? httpStatus.BAD_REQUEST : httpStatus.INTERNAL_SERVER_ERROR;
-    const message = error.message || httpStatus[statusCode];
+    const message = error.message.replace(/"/g, "'") || httpStatus[statusCode];
     error = new ApiError(statusCode, message, false, err.stack);
   }
   next(error);
@@ -22,13 +22,14 @@ const errorHandler = (err, req, res, next) => {
     statusCode = httpStatus.INTERNAL_SERVER_ERROR;
     message = httpStatus[httpStatus.INTERNAL_SERVER_ERROR];
   }
+  message = message.replace(/"/g, "'");
 
   res.locals.errorMessage = err.message;
 
   const response = {
     code: statusCode,
     message,
-    ...(config.env === "development" && { stack: err.stack }),
+    ...(config.env === "development" && { stack: err.stack.replace(/"/g, "'") }),
   };
 
   if (config.env === "development") {

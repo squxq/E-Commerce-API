@@ -1,5 +1,4 @@
 const httpStatus = require("http-status");
-// const { v4: uuidv4 } = require("uuid");
 const hash = require("object-hash");
 const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
@@ -7,7 +6,6 @@ const prisma = require("../config/db");
 const parser = require("../utils/parser");
 const { uploadImage, deleteImage } = require("../utils/cloudinary");
 const { duplicateNames } = require("../utils/duplicates");
-// const config = require("../config/config");
 
 /**
  * @desc Create New Category
@@ -17,10 +15,8 @@ const { duplicateNames } = require("../utils/duplicates");
  * @returns { Object<id|parent_category_id|category_name|category_image|category_description> }
  */
 const createCategory = catchAsync(async (categoryName, parentCategoryId, file, categoryDescription) => {
-  // check if field is empty
-  if (!categoryName) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Category name not provided");
-  } else if (!file) {
+  // check if file  is empty
+  if (!file) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
   }
   // check for duplicate names
@@ -56,6 +52,9 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file, c
     },
   });
 
+  if (Object.keys(result).length === 0)
+    throw new ApiError(httpStatus.NO_CONTENT, "The category was not created due to a system error, please try again.");
+
   return result;
 });
 
@@ -78,6 +77,7 @@ const updateCategory = catchAsync(async (data, image) => {
     await duplicateNames(data.categoryName, parentCategoryId);
   }
 
+  // Check for duplicate images
   const category = await prisma.$queryRaw`
     SELECT a.*,
      (
@@ -117,6 +117,7 @@ const updateCategory = catchAsync(async (data, image) => {
       .join("_")
       .replace(/[^a-zA-Z0-9-_]/g, "");
 
+    // if it is the only image - delete it
     if (category[0].count === 1) {
       const { result } = await deleteImage(category[0].image);
       if (result === "not found") throw new ApiError(httpStatus.NOT_FOUND, "Image not found, deletion interrupted");
@@ -124,7 +125,6 @@ const updateCategory = catchAsync(async (data, image) => {
 
     // upload image
     const { public_id: publicId } = await uploadImage(bufferImage.content, "Category", formattedName);
-
     data.image = publicId;
   }
   const result = await prisma.product_category.update({
@@ -139,6 +139,9 @@ const updateCategory = catchAsync(async (data, image) => {
       description: true,
     },
   });
+
+  if (Object.keys(result).length === 0)
+    throw new ApiError(httpStatus.NO_CONTENT, "The category was not updated due to a system error, please try again.");
 
   return result;
 });

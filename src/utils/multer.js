@@ -9,7 +9,7 @@ const limits = {
 };
 
 const fileFilter = (req, file, cb) => {
-  if (!file.originalname.match(/\.(jpg|JPG|jpeg|JPEG|png|PNG|WEBP|webp)$/)) {
+  if (!file.originalname.match(/\.(jpg|JPG|jpeg|JPEG|png|PNG|WEBP|webp|jfif)$/)) {
     req.fileValidationError = "Only image files are allowed!";
     return cb(new ApiError(httpStatus.BAD_REQUEST, "Not an image! Please upload only images"), false);
   }
@@ -42,7 +42,7 @@ const singleFile = (name) => (req, res, next) => {
 /**
  * Upload any number of images with any name
  */
-const anyMulter = () => (req, res, next) => {
+const anyFile = () => (req, res, next) => {
   const upload = multer({
     storage,
     limits,
@@ -57,5 +57,5 @@ const anyMulter = () => (req, res, next) => {
 
 module.exports = {
   singleFile,
-  anyMulter,
+  anyFile,
 };
