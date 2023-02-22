@@ -9,10 +9,12 @@ datasource db {
 
 model product_category {
   id                     String             @id @default(uuid())
-  parent_category_id     String?
-  category_name          String
-  category_image         String?
-  category_description   String?
-  product_category       product_category?  @relation("product_categoryToproduct_category", fields: [parent_category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parent_id              String?
+  name                   String
+  image                  String?
+  description            String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  product_category       product_category?  @relation("product_categoryToproduct_category", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_product_category product_category[] @relation("product_categoryToproduct_category")
 }

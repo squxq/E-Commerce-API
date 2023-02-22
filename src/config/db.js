@@ -19,7 +19,6 @@ const prisma = new PrismaClient({
       level: "warn",
     },
   ],
-  errorFormat: "pretty",
 });
 
 prisma.$on("query", (e) => {

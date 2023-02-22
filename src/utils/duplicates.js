@@ -8,11 +8,11 @@ const duplicateNames = catchAsync(async (proposedName, id) => {
   let result;
   if (!id) {
     result = await prisma.$queryRaw`
-        SELECT array_agg(category_name) AS names FROM product_category WHERE parent_category_id IS NULL
+        SELECT array_agg(name) AS names FROM product_category WHERE parent_id IS NULL
         `;
   } else {
     result = await prisma.$queryRaw`
-        SELECT array_agg(category_name) AS names FROM product_category WHERE parent_category_id = ${id}
+        SELECT array_agg(name) AS names FROM product_category WHERE parent_id = ${id}
         `;
   }
   result = result[0].names;

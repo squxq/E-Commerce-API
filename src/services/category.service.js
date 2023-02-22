@@ -1,5 +1,5 @@
 const httpStatus = require("http-status");
-const { v4: uuidv4 } = require("uuid");
+// const { v4: uuidv4 } = require("uuid");
 const hash = require("object-hash");
 const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
@@ -7,7 +7,7 @@ const prisma = require("../config/db");
 const parser = require("../utils/parser");
 const { uploadImage, deleteImage } = require("../utils/cloudinary");
 const { duplicateNames } = require("../utils/duplicates");
-const config = require("../config/config");
+// const config = require("../config/config");
 
 /**
  * @desc Create New Category
@@ -16,7 +16,7 @@ const config = require("../config/config");
  * @param { Object } file
  * @returns { Object<id|parent_category_id|category_name|category_image|category_description> }
  */
-const createCategory = catchAsync(async (categoryName, parentCategoryId, file) => {
+const createCategory = catchAsync(async (categoryName, parentCategoryId, file, categoryDescription) => {
   // check if field is empty
   if (!categoryName) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Category name not provided");
@@ -25,27 +25,38 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file) =
   }
   // check for duplicate names
   await duplicateNames(categoryName, parentCategoryId);
-  // uuid for projects db
-  const categoryId = uuidv4().toString();
 
   // file buffer from data uri string
-  let image = parser(file);
+  const image = parser(file);
 
   // folder name
-  const formattedName = categoryName.trim().toLowerCase().split(" ").join("_");
-
-  // folder name
-  // const folderName = `Category/${formattedName}`;
+  const formattedName = categoryName
+    .trim()
+    .toLowerCase()
+    .split(" ")
+    .join("_")
+    .replace(/[^a-zA-Z0-9-_]/g, "");
 
   // upload image
-  image = await uploadImage(image.content, "Category", formattedName);
+  const { public_id: publicId } = await uploadImage(image.content, "Category", formattedName);
 
   // create category in product_category
-  const result =
-    await prisma.$queryRaw`INSERT INTO product_category(id, parent_category_id, category_name, category_image) VALUES(${categoryId}, ${parentCategoryId}, ${categoryName}, ${image.secure_url}) RETURNING *
-      `;
+  const result = await prisma.product_category.create({
+    data: {
+      parent_id: parentCategoryId,
+      name: categoryName,
+      image: publicId,
+      description: categoryDescription && categoryDescription,
+    },
+    select: {
+      id: true,
+      parent_id: true,
+      name: true,
+      description: true,
+    },
+  });
 
-  return result[0];
+  return result;
 });
 
 /**
@@ -67,44 +78,66 @@ const updateCategory = catchAsync(async (data, image) => {
     await duplicateNames(data.categoryName, parentCategoryId);
   }
 
-  const category = await prisma.product_category.findUnique({
-    where: {
-      id: categoryId,
-    },
-  });
+  const category = await prisma.$queryRaw`
+    SELECT a.*,
+     (
+      SELECT COUNT(*)::int FROM
+      (
+        SELECT * FROM product_category AS c
+        WHERE
+          CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
+          / CHAR_LENGTH(SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31 ))) = 1 THEN true ELSE false END
+        LIMIT 2
+      ) AS b
+    )
+    FROM product_category AS a
+    WHERE id = ${categoryId}
+  `;
 
-  if (!category) {
+  if (category.length === 0) {
     throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
   }
 
   /* eslint no-param-reassign: ["error", { "props": false }] */
   Object.keys(data).forEach((property) => {
-    data[`${property.replace(/\.?([A-Z])/g, (x, y) => `_${y.toLowerCase()}`)}`] = data[property];
+    data[`${property.replace(/\.?([A-Z])/g, (x, y) => `_${y.toLowerCase()}`).replace("category_", "")}`] = data[property];
     delete data[property];
   });
 
-  let bufferImage = parser(image);
+  const bufferImage = parser(image);
   if (
     image &&
-    category.category_image.substring(category.category_image.length - 37, category.category_image.length - 5) !==
-      hash(bufferImage.content, { algorithm: "md5" })
+    category[0].image.substring(category[0].image.length - 32) !== hash(bufferImage.content, { algorithm: "md5" })
   ) {
     // folder name
-    const formattedName = category.category_name.trim().toLowerCase().split(" ").join("_");
+    const formattedName = category[0].name
+      .trim()
+      .toLowerCase()
+      .split(" ")
+      .join("_")
+      .replace(/[^a-zA-Z0-9-_]/g, "");
 
-    // folder name
-    // const folderName = `Category/${formattedName}`;
+    if (category[0].count === 1) {
+      const { result } = await deleteImage(category[0].image);
+      if (result === "not found") throw new ApiError(httpStatus.NOT_FOUND, "Image not found, deletion interrupted");
+    }
 
     // upload image
-    bufferImage = await uploadImage(image.content, "Category", formattedName);
+    const { public_id: publicId } = await uploadImage(bufferImage.content, "Category", formattedName);
 
-    data.category_image = bufferImage.secure_url;
+    data.image = publicId;
   }
   const result = await prisma.product_category.update({
     where: {
-      id: category.id,
+      id: category[0].id,
     },
     data,
+    select: {
+      id: true,
+      parent_id: true,
+      name: true,
+      description: true,
+    },
   });
 
   return result;
@@ -126,8 +159,8 @@ const deleteCategory = catchAsync(async (id) => {
       (
         SELECT * FROM product_category AS c
         WHERE
-          CASE WHEN (CHAR_LENGTH(c.category_image) - CHAR_LENGTH(REPLACE(c.category_image, SUBSTRING(a.category_image from (CHAR_LENGTH(a.category_image) - 37) for 32), '')))
-          / CHAR_LENGTH(SUBSTRING(a.category_image from (CHAR_LENGTH(a.category_image) - 37) for 32)) = 1 THEN true ELSE false END
+          CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
+          / CHAR_LENGTH(SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31 ))) = 1 THEN true ELSE false END
         LIMIT 2
       ) AS b
     )
@@ -139,11 +172,8 @@ const deleteCategory = catchAsync(async (id) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
   }
 
-  let imageName = category[0].category_image;
-  imageName = imageName.substring(imageName.search(config.cloud.project) + 1, imageName.length - 5);
-
   if (category[0].count === 1) {
-    const { result } = await deleteImage(imageName);
+    const { result } = await deleteImage(category[0].image);
     if (result === "not found") throw new ApiError(httpStatus.NOT_FOUND, "Image not found, deletion interrupted");
   }
   await prisma.$queryRaw`

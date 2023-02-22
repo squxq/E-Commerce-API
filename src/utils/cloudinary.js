@@ -20,7 +20,7 @@ const uploadImage = catchAsync(async (image, folderName, fileName) => {
     public_id: `${fileName}_${etag}`,
     phash: true,
     use_filename: true,
-    unique_filename: false,
+    unique_filename: true,
     overwrite: true,
     invalidate: true,
     crop: "fit",

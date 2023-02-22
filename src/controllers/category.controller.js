@@ -13,9 +13,9 @@ const { categoryService } = require("../services");
  * @returns { JSON }
  */
 const createCategory = catchAsync(async (req, res) => {
-  const { categoryName, parentCategoryId = null } = req.body;
+  const { categoryName, parentCategoryId = null, categoryDescription = null } = req.body;
 
-  const result = await categoryService.createCategory(categoryName, parentCategoryId, req.file);
+  const result = await categoryService.createCategory(categoryName, parentCategoryId, req.file, categoryDescription);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
