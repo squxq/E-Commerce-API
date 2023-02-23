@@ -26,12 +26,14 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file, c
   const image = parser(file);
 
   // folder name
-  const formattedName = categoryName
-    .trim()
-    .toLowerCase()
-    .split(" ")
-    .join("_")
-    .replace(/[^a-zA-Z0-9-_]/g, "");
+  const formattedName = encodeURIComponent(
+    categoryName
+      .trim()
+      .toLowerCase()
+      .split(" ")
+      .join("_")
+      .replace(/[^a-zA-Z0-9-_]/g, "")
+  );
 
   // upload image
   const { public_id: publicId } = await uploadImage(image.content, "Category", formattedName);
@@ -110,12 +112,14 @@ const updateCategory = catchAsync(async (data, image) => {
     category[0].image.substring(category[0].image.length - 32) !== hash(bufferImage.content, { algorithm: "md5" })
   ) {
     // folder name
-    const formattedName = category[0].name
-      .trim()
-      .toLowerCase()
-      .split(" ")
-      .join("_")
-      .replace(/[^a-zA-Z0-9-_]/g, "");
+    const formattedName = encodeURIComponent(
+      category[0].name
+        .trim()
+        .toLowerCase()
+        .split(" ")
+        .join("_")
+        .replace(/[^a-zA-Z0-9-_]/g, "")
+    );
 
     // if it is the only image - delete it
     if (category[0].count === 1) {

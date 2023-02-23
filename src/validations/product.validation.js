@@ -8,10 +8,33 @@ const createProduct = {
       .label("Category Id"),
     name: Joi.string().required().label("Name"),
     description: Joi.string().required().label("Description"),
-    // quantity: Joi.number().required().greater(0).label("Quantity in Stock"),
-    // price: Joi.number().required().greater(0).label("Price"),
+    quantity: Joi.number().required().greater(0).label("Quantity in Stock"),
+    price: Joi.object()
+      .keys({
+        value: Joi.number().required().greater(0).label("Price value"),
+        currency: Joi.string().required().label("Currency ISO"),
+      })
+      .required()
+      .label("Product's price"),
+    options: Joi.object().required().label("Variation Options"),
   }),
-  // files: Joi.array().items(Joi.object().required().label("Image")).required().max(10).label("Images"),
+  files: Joi.array()
+    .items(
+      Joi.object()
+        .keys({
+          fieldname: Joi.string().required(),
+          originalname: Joi.string(),
+          encoding: Joi.string().required(),
+          mimetype: Joi.string().required(),
+          buffer: Joi.binary().encoding("base64").required(),
+          size: Joi.number().required(),
+        })
+        .required()
+        .label("Image")
+    )
+    .required()
+    .max(10)
+    .label("Images"),
 };
 
 module.exports = { createProduct };

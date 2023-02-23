@@ -28,6 +28,7 @@ const envVarsSchema = Joi.object()
     CLOUD_API_KEY: Joi.string().required().description("Cloud api key for remote access"),
     CLOUD_API_SECRET: Joi.string().required().description("Cloud api secret for authentication"),
     CLOUD_PROJECT: Joi.string().default("default-project").description("Master name of the cloud project to be created"),
+    EXCHANGE_RATE_KEY: Joi.string().required().description("API key for https://app.exchangerate-api.com/"),
   })
   .unknown();
 
@@ -75,4 +76,5 @@ module.exports = {
     apiSecret: envVars.CLOUD_API_SECRET,
     project: envVars.CLOUD_PROJECT,
   },
+  exchangeRateKey: envVars.EXCHANGE_RATE_KEY,
 };

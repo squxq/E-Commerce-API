@@ -26,7 +26,7 @@ model product {
   category_id  String
   name         String
   description  String
-  image        String?
+  image        String
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   category     product_category @relation(fields: [category_id], references: [id])

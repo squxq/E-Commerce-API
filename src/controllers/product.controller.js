@@ -11,16 +11,11 @@ const { productService } = require("../services");
  * @returns { JSON }
  */
 const createProduct = catchAsync(async (req, res) => {
-  const { categoryId, name, description } = req.body;
-
-  const result = await productService.createProduct(categoryId, name, description);
+  const result = await productService.createProduct(req.body, req.files);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: [
-      req.polyglot.t("successfulProductCreate"),
-      "Please create your product variants, such that it can be released to public.",
-    ],
+    message: [req.polyglot.t("successfulProductCreate")],
     output: result,
   });
 });
