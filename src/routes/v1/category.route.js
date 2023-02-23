@@ -1,7 +1,7 @@
 const express = require("express");
 const validate = require("../../middlewares/validate");
 const categoryValidation = require("../../validations/category.validation");
-const categoryController = require("../../controllers/category.controller");
+const { categoryController } = require("../../controllers");
 const { singleFile } = require("../../utils/multer");
 
 const router = express.Router();

@@ -1,5 +1,5 @@
-const catchAsync = require("../utils/catchAsync");
 const httpStatus = require("http-status");
+const catchAsync = require("../utils/catchAsync");
 const prisma = require("../config/db");
 const ApiError = require("../utils/ApiError");
 // const { uploadImage, deleteImage } = require("../utils/cloudinary");
