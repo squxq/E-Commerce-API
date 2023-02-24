@@ -43,9 +43,16 @@ const createProduct = catchAsync(async (data, images) => {
   });
 
   // check for a main image
-  let mainImage = images.find((image) => image.fieldname === "main")
-    ? images.find((image) => image.fieldname === "main")
-    : images[0];
+  let mainImage;
+  let hasMain = false;
+  if (images.find((image) => image.fieldname === "main")) {
+    mainImage = images.find((image) => image.fieldname === "main");
+    images.splice(images.indexOf(mainImage), 1);
+  } else {
+    mainImage = images[0];
+    images = images.slice(1);
+    hasMain = true;
+  }
 
   mainImage = parser(mainImage);
 
@@ -60,7 +67,7 @@ const createProduct = catchAsync(async (data, images) => {
   );
   const folder = `Products/${formattedName}`;
 
-  const { public_id: mainPublicId } = await uploadImage(mainImage.content, folder, formattedName);
+  const { public_id: mainPublicId } = await uploadImage(mainImage.content, folder, `${formattedName}_main`);
 
   const result = await prisma.$transaction([
     prisma.product.create({
@@ -89,13 +96,33 @@ const createProduct = catchAsync(async (data, images) => {
   if (!result[0]) throw new ApiError(httpStatus.NO_CONTENT, "The product was not created, please retry");
 
   let convertedPrice;
+  price.value = Math.round((price.value + Number.EPSILON) * 100) / 100;
   // conversion from customers currency to usd
   if (result[1].length === 0) {
     convertedPrice = convertCurrency(price.value, price.currency, "USD");
   } else {
-    convertedPrice = +result[1][0].exchange_rate * +price.value;
+    convertedPrice = +result[1][0].exchange_rate * price.value;
   }
-  // still have to round the price before and after conversion
+  // Math.round((num + Number.EPSILON) * 100) / 100 - Number.EPSILON = 2.7755575615628914e-17
+  convertedPrice = Math.round((convertedPrice + Number.EPSILON) * 100) / 100;
+
+  // product_item images
+  const imagesPromises = images.map(async (image) => {
+    const { public_id: publicId } = await uploadImage(parser(image).content, folder, formattedName);
+    return publicId;
+  });
+  const uploadedImages = await Promise.all(imagesPromises);
+  if (hasMain) uploadedImages.unshift(mainPublicId);
+
+  // const productItem = await prisma.product_item.create({
+  //   data: {
+  //     product_id: result[0].id,
+  //     SKU: ,
+  //     QIS: Math.floor(quantity),
+  //     images: ,
+  //     price: convertedPrice,
+  //   }
+  // })
 });
 
 module.exports = {
