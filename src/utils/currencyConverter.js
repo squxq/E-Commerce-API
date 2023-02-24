@@ -1,9 +1,9 @@
-const https = require("node:https");
+const https = require("https");
 const httpStatus = require("http-status");
 const config = require("../config/config");
-const logger = require("../config/logger");
 const catchAsync = require("./catchAsync");
 const ApiError = require("./ApiError");
+const prisma = require("../config/db");
 
 const convertCurrency = catchAsync((value, currencyStart, currencyEnd) => {
   const options = {
@@ -18,19 +18,33 @@ const convertCurrency = catchAsync((value, currencyStart, currencyEnd) => {
     },
   };
 
-  let data;
-
+  let output;
+  let result;
   const request = https.request(options, (response) => {
-    // encoding so the date is not in binary
-    response.setEncoding("utf8");
-    // as the data streams in add chunks
-    response.on("data", (chunk) => {
-      data += chunk;
-    });
     // the response has been received
-    response.on("end", () => {
-      logger.info(JSON.parse(data));
+    response.on("data", (chunk) => {
+      output = JSON.parse(chunk.toString());
     });
+
+    response.on(
+      "end",
+      catchAsync(async () => {
+        if (output.result === "success") {
+          await prisma.fx_rates.create({
+            data: {
+              source_currency: output.base_code,
+              target_currency: output.target_code,
+              exchange_rate: output.conversion_rate,
+              valid_from_date: output.time_last_update_unix,
+              valid_to_date: output.time_next_update_unix,
+            },
+          });
+          result = output.conversion_result;
+        } else {
+          throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Currency conversion was not successful");
+        }
+      })
+    );
   });
   request.on("error", (err) => {
     throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err.message);
@@ -38,6 +52,6 @@ const convertCurrency = catchAsync((value, currencyStart, currencyEnd) => {
 
   request.end();
 
-  // console.log(Object.values(request)[0]);
+  return result;
 });
 module.exports = convertCurrency;

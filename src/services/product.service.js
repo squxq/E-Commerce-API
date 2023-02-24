@@ -62,54 +62,40 @@ const createProduct = catchAsync(async (data, images) => {
 
   const { public_id: mainPublicId } = await uploadImage(mainImage.content, folder, formattedName);
 
-  const product = await prisma.product.create({
-    data: {
-      category_id: categoryId,
-      name,
-      description,
-      image: mainPublicId,
-    },
-    select: {
-      id: true,
-      category_id: true,
-      name: true,
-      description: true,
-      image: true,
-    },
-  });
+  const result = await prisma.$transaction([
+    prisma.product.create({
+      data: {
+        category_id: categoryId,
+        name,
+        description,
+        image: mainPublicId,
+      },
+      select: {
+        id: true,
+        category_id: true,
+        name: true,
+        description: true,
+        image: true,
+      },
+    }),
+    prisma.$queryRaw`
+    SELECT exchange_rate
+    FROM fx_rates
+    WHERE (source_currency = ${price.currency} AND target_currency = 'USD')
+    AND (extract(epoch from now()) BETWEEN valid_from_date AND valid_to_date)
+    `,
+  ]);
   // check for irregularities
-  if (!product) throw new ApiError(httpStatus.NO_CONTENT, "The product was not created, please retry");
+  if (!result[0]) throw new ApiError(httpStatus.NO_CONTENT, "The product was not created, please retry");
 
-  convertCurrency(price.value, price.currency, "USD");
-
-  // if (!product) throw new ApiError(httpStatus.NO_CONTENT, "Product was not created, please try again");
-  // const [product, variationOptions] = await prisma.$transaction([
-  //   prisma.product.create({
-  //     data: {
-  //       category_id: categoryId,
-  //       name,
-  //       description,
-  //     },
-  //     select: {
-  //       id: true,
-  //       category_id: true,
-  //       name: true,
-  //       description: true,
-  //     },
-  //   }),
-  //   prisma.$queryRaw`
-  //   SELECT name,
-  //   (
-  //     SELECT array_agg(value) AS values
-  //     FROM variation_option AS b
-  //     WHERE b.variation_id = a.id
-  //   ) FROM variation AS a
-  //  `,
-  // ]);
-  // if (Object.keys(product).length === 0)
-  //   throw new ApiError(httpStatus.NO_CONTENT, "The product was not created due to a system error, please try again.");
-  // product.variation_options = variationOptions;
-  // return product;
+  let convertedPrice;
+  // conversion from customers currency to usd
+  if (result[1].length === 0) {
+    convertedPrice = convertCurrency(price.value, price.currency, "USD");
+  } else {
+    convertedPrice = +result[1][0].exchange_rate * +price.value;
+  }
+  // still have to round the price before and after conversion
 });
 
 module.exports = {

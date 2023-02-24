@@ -81,3 +81,12 @@ model product_configuration {
   product_item        product_item     @relation(fields: [product_item_id], references: [id])
   variation_option    variation_option @relation(fields: [variation_option_id], references: [id])
 }
+
+model fx_rates {
+  id              String  @id @default(uuid())
+  source_currency String
+  target_currency String
+  exchange_rate   Decimal
+  valid_from_date Int
+  valid_to_date   Int
+}
