@@ -8,10 +8,10 @@ const createProduct = {
       .label("Category Id"),
     name: Joi.string().required().label("Name"),
     description: Joi.string().required().label("Description"),
-    quantity: Joi.number().required().greater(0).label("Quantity in Stock"),
+    quantity: Joi.number().integer().required().greater(0).label("Quantity in Stock"),
     price: Joi.object()
       .keys({
-        value: Joi.number().required().greater(0).label("Price value"),
+        value: Joi.string().required().label("Price value"),
         currency: Joi.string().required().label("Currency ISO"),
       })
       .required()

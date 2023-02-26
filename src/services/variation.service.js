@@ -1,5 +1,5 @@
 const httpStatus = require("http-status");
-const prisma = require("../config/db");
+const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
 
@@ -10,7 +10,7 @@ const catchAsync = require("../utils/catchAsync");
  * @returns { Object<id|category_id|name> }
  */
 const createVariation = catchAsync(async (categoryId, name) => {
-  const variation = await prisma.variation.create({
+  const variation = await prismaProducts.variation.create({
     data: {
       category_id: categoryId,
       name,
@@ -46,7 +46,7 @@ const updateVariation = catchAsync(async (data) => {
     }
   });
 
-  const variation = await prisma.variation.update({
+  const variation = await prismaProducts.variation.update({
     where: {
       id: variationId,
     },
@@ -67,7 +67,7 @@ const updateVariation = catchAsync(async (data) => {
  * @param { String } variationId
  */
 const deleteVariation = catchAsync(async (variationId) => {
-  await prisma.variation.delete({
+  await prismaProducts.variation.delete({
     where: {
       id: variationId,
     },
@@ -81,9 +81,9 @@ const deleteVariation = catchAsync(async (variationId) => {
  * @returns { Array }
  */
 const createVariationOptions = catchAsync(async (variationId, values) => {
-  const result = await prisma.$transaction(
+  const result = await prismaProducts.$transaction(
     values.map((value) =>
-      prisma.variation_option.create({
+      prismaProducts.variation_option.create({
         data: {
           variation_id: variationId,
           value,
@@ -119,7 +119,7 @@ const updateVariationOption = catchAsync(async (data) => {
     }
   });
 
-  const option = await prisma.variation_option.update({
+  const option = await prismaProducts.variation_option.update({
     where: {
       id: optionId,
     },
@@ -140,9 +140,9 @@ const updateVariationOption = catchAsync(async (data) => {
  * @param { Array } ids
  */
 const deleteVariationOptions = catchAsync(async (ids) => {
-  await prisma.$transaction(
+  await prismaProducts.$transaction(
     ids.map((id) =>
-      prisma.variation_option.delete({
+      prismaProducts.variation_option.delete({
         where: { id },
       })
     )

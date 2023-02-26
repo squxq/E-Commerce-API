@@ -1,27 +1,44 @@
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
-const prisma = require("../config/db");
+const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
-const { uploadImage, deleteImage } = require("../utils/cloudinary");
+const { uploadImage } = require("../utils/cloudinary");
 const parser = require("../utils/parser");
 const convertCurrency = require("../utils/currencyConverter");
+const { Currencies, FxRates } = require("../models");
+const runInTransaction = require("../utils/mongoTransaction");
+
+const createSKU = (str) => {
+  if (str.trim().indexOf(" ") === -1) {
+    return str.trim().substring(0, 2).toUpperCase();
+  }
+  return str
+    .trim()
+    .split(" ")
+    .map((word) => {
+      return word.charAt(0).toUpperCase();
+    })
+    .join("");
+};
 
 const createProduct = catchAsync(async (data, images) => {
   const { categoryId, name, description, quantity, price, options } = data;
 
   // check the allowed options for product configuration
-  const allowedOptions = await prisma.$queryRaw`
-    SELECT c.name, array_agg(value) AS values
+  const allowedOptions = await prismaProducts.$queryRaw`
+    SELECT c.name, array_agg(value) AS values, d.name AS category_name
     FROM variation_option AS a
     JOIN variation AS c
     ON a.variation_id = c.id
+    JOIN product_category AS d
+    ON d.id = ${categoryId}
     WHERE variation_id IN
     (
       SELECT id
       FROM variation AS b
       WHERE b.category_id = ${categoryId}
     )
-    GROUP BY a.variation_id, c.name
+    GROUP BY a.variation_id, c.name, d.name
     ORDER BY c.name ASC
   `;
 
@@ -42,19 +59,55 @@ const createProduct = catchAsync(async (data, images) => {
     if (!exists) throw new ApiError(httpStatus.BAD_REQUEST, `Wrong variation option provided for: ${key}`);
   });
 
+  // check and format the price
+
+  const result = await runInTransaction(async (session) => {
+    const currency = await Currencies.findOne({ code: price.currency }, {}, { session });
+    const fxRate = await FxRates.findOne(
+      {
+        source_currency: currency.code,
+        target_currency: "USD",
+        valid_from_date: {
+          $lte: new Date().toISOString(),
+        },
+        valid_to_date: {
+          $gte: new Date().toISOString(),
+        },
+      },
+      {},
+      { session }
+    );
+    return { currency, fxRate };
+  });
+
+  if (result.currency === null) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid currency provided");
+  }
+
+  let exchangeRate;
+  if (result.fxRate === null) {
+    exchangeRate = convertCurrency(price.currency, "USD");
+  } else {
+    exchangeRate = parseFloat(result.fxRate.exchange_rate.toString());
+  }
+  price.value = parseFloat(price.value); // float value
+
+  let formattedPrice = Math.floor(
+    price.value * result.currency.base[result.currency.base.length - 1] ** result.currency.exponent
+  );
+
+  formattedPrice = (Math.round((formattedPrice * exchangeRate + Number.EPSILON) * 10) / 10).toFixed(1);
+  console.log(formattedPrice);
+
   // check for a main image
   let mainImage;
   let hasMain = false;
   if (images.find((image) => image.fieldname === "main")) {
     mainImage = images.find((image) => image.fieldname === "main");
     images.splice(images.indexOf(mainImage), 1);
-  } else {
-    mainImage = images[0];
-    images = images.slice(1);
+    images.unshift(mainImage);
     hasMain = true;
   }
-
-  mainImage = parser(mainImage);
 
   // upload image
   const formattedName = encodeURIComponent(
@@ -65,12 +118,48 @@ const createProduct = catchAsync(async (data, images) => {
       .join("_")
       .replace(/[^a-zA-Z0-9-_]/g, "")
   );
+
   const folder = `Products/${formattedName}`;
 
-  const { public_id: mainPublicId } = await uploadImage(mainImage.content, folder, `${formattedName}_main`);
+  // images
+  const imagePromises = images.map(async (image) => {
+    if (image.fieldname === "main") {
+      const { public_id: publicId } = await uploadImage(parser(image).content, folder, `${formattedName}_main`);
+      return publicId;
+    }
+    const { public_id: publicId } = await uploadImage(parser(image).content, folder, formattedName);
+    return publicId;
+  });
 
-  const result = await prisma.$transaction([
-    prisma.product.create({
+  const imagesArray = await Promise.all(imagePromises);
+  const mainPublicId = imagesArray[0];
+  if (hasMain) imagesArray.shift();
+
+  // SKU - generation
+  // categoryName + productName + productVariationOptions
+
+  const orderedOptions = Object.keys(options)
+    .sort()
+    .reduce((obj, key) => {
+      // eslint-disable-next-line no-undef, no-param-reassign
+      obj[key] = options[key];
+      return obj;
+    }, {});
+
+  const names = [allowedOptions[0].category_name, name];
+
+  let sku = names.map((skuName) => createSKU(skuName));
+  sku = sku.concat(
+    Object.values(orderedOptions).map((option) => {
+      if (option.replace(" ", "").length > 4) {
+        return createSKU(option);
+      }
+      return option.replace(" ", "").toUpperCase();
+    })
+  );
+
+  const createProductTransaction = await prismaProducts.$transaction(async (prisma) => {
+    const createNewProduct = await prisma.product.create({
       data: {
         category_id: categoryId,
         name,
@@ -84,45 +173,59 @@ const createProduct = catchAsync(async (data, images) => {
         description: true,
         image: true,
       },
-    }),
-    prisma.$queryRaw`
-    SELECT exchange_rate
-    FROM fx_rates
-    WHERE (source_currency = ${price.currency} AND target_currency = 'USD')
-    AND (extract(epoch from now()) BETWEEN valid_from_date AND valid_to_date)
-    `,
-  ]);
-  // check for irregularities
-  if (!result[0]) throw new ApiError(httpStatus.NO_CONTENT, "The product was not created, please retry");
+    });
 
-  let convertedPrice;
-  price.value = Math.round((price.value + Number.EPSILON) * 100) / 100;
-  // conversion from customers currency to usd
-  if (result[1].length === 0) {
-    convertedPrice = convertCurrency(price.value, price.currency, "USD");
-  } else {
-    convertedPrice = +result[1][0].exchange_rate * price.value;
-  }
-  // Math.round((num + Number.EPSILON) * 100) / 100 - Number.EPSILON = 2.7755575615628914e-17
-  convertedPrice = Math.round((convertedPrice + Number.EPSILON) * 100) / 100;
+    const createProductItem = await prisma.product_item.create({
+      data: {
+        product_id: createNewProduct.id,
+        SKU: sku.join("-"),
+        QIS: Math.floor(quantity),
+        images: imagesArray,
+        price: formattedPrice,
+      },
+      select: {
+        id: true,
+        product_id: true,
+        SKU: true,
+        QIS: true,
+        images: true,
+        price: true,
+      },
+    });
 
-  // product_item images
-  const imagesPromises = images.map(async (image) => {
-    const { public_id: publicId } = await uploadImage(parser(image).content, folder, formattedName);
-    return publicId;
+    const variationsPromises = Object.entries(orderedOptions).map(async ([key, value]) => {
+      return prisma.$queryRaw`
+        SELECT b.id
+        FROM variation AS a
+        JOIN variation_option AS b
+        ON a.name = ${key} AND b.value = ${value}
+        WHERE category_id = ${categoryId}
+      `;
+    });
+
+    let variationIds = await Promise.all(variationsPromises);
+    variationIds = variationIds.map((variationId) => variationId[0]);
+
+    const configurationPromises = variationIds.map(async ({ id }) =>
+      prisma.product_configuration.create({
+        data: {
+          product_item_id: createProductItem.id,
+          variation_option_id: id,
+        },
+        select: {
+          id: true,
+          product_item_id: true,
+          variation_option_id: true,
+        },
+      })
+    );
+
+    const createProductConfiguration = await Promise.all(configurationPromises);
+
+    return [createNewProduct, createProductItem, createProductConfiguration];
   });
-  const uploadedImages = await Promise.all(imagesPromises);
-  if (hasMain) uploadedImages.unshift(mainPublicId);
 
-  // const productItem = await prisma.product_item.create({
-  //   data: {
-  //     product_id: result[0].id,
-  //     SKU: ,
-  //     QIS: Math.floor(quantity),
-  //     images: ,
-  //     price: convertedPrice,
-  //   }
-  // })
+  return createProductTransaction;
 });
 
 module.exports = {

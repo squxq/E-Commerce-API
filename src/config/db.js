@@ -1,8 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
+const mongoose = require("mongoose");
+const config = require("./config");
 const logger = require("./logger");
 const prismaMiddleware = require("../middlewares/prisma");
 
-const prisma = new PrismaClient({
+const prismaProducts = new PrismaClient({
   log: [
     {
       emit: "event",
@@ -25,25 +27,32 @@ const prisma = new PrismaClient({
 });
 
 // Logs
-prisma.$on("beforeExit", async (e) => {
+prismaProducts.$on("beforeExit", async (e) => {
   logger.warn(`Connection between server and database closed. Event: ${e}`);
 });
 
-prisma.$on("query", async (e) => {
+prismaProducts.$on("query", async (e) => {
   logger.info(`Query: ${e.query}`);
   logger.info(`Params: ${e.params}`);
   logger.info(`Duration: ${e.duration}ms`);
 });
 
-prisma.$on("error", async (e) => {
+prismaProducts.$on("error", async (e) => {
   logger.error(e);
 });
 
-prisma.$on("warn", async (e) => {
+prismaProducts.$on("warn", async (e) => {
   logger.warn(e);
 });
 
-// prisma Middleware
-prisma.$use(prismaMiddleware);
+mongoose.set("strictQuery", false);
 
-module.exports = prisma;
+const connectMongo = () => mongoose.connect(config.db.mongo.mongoURI, config.db.mongo.options);
+
+// prisma Middleware
+prismaProducts.$use(prismaMiddleware);
+
+module.exports = {
+  prismaProducts,
+  connectMongo,
+};

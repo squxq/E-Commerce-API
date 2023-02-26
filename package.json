@@ -19,7 +19,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prettier": "prettier --check **/*.js",
-    "prettier:fix": "prettier write **/*.js"
+    "prettier:fix": "prettier write **/*.js",
+    "products:generate": "npx prisma generate --schema prisma_connections/prisma_products/schema.prisma",
+    "products:migrate": "npx prisma migrate dev --schema prisma_connections/prisma_products/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^4.10.1",
@@ -36,7 +38,7 @@
     "helmet": "^6.0.1",
     "http-status": "^1.6.2",
     "joi": "^17.7.1",
-    "mongoose": "^6.9.2",
+    "mongoose": "^6.10.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "node-polyglot": "^2.5.0",
@@ -46,6 +48,7 @@
     "swagger-ui-express": "^4.6.1",
     "uuid": "^9.0.0",
     "winston": "^3.8.2",
+    "xlsx": "^0.18.5",
     "xss-clean": "^0.1.1"
   },
   "devDependencies": {

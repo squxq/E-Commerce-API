@@ -1,17 +1,17 @@
 const httpStatus = require("http-status");
 const catchAsync = require("./catchAsync");
 const ApiError = require("./ApiError");
-const prisma = require("../config/db");
+const { prismaProducts } = require("../config/db");
 
 // Check for duplicate names - category
 const duplicateNames = catchAsync(async (proposedName, id) => {
   let result;
   if (!id) {
-    result = await prisma.$queryRaw`
+    result = await prismaProducts.$queryRaw`
         SELECT array_agg(name) AS names FROM product_category WHERE parent_id IS NULL
         `;
   } else {
-    result = await prisma.$queryRaw`
+    result = await prismaProducts.$queryRaw`
         SELECT array_agg(name) AS names FROM product_category WHERE parent_id = ${id}
         `;
   }

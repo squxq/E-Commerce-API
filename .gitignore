@@ -13,3 +13,7 @@ coverage
 
 # vscode
 .vscode
+
+# python
+venv
+data

@@ -23,12 +23,14 @@ const envVarsSchema = Joi.object()
     SMTP_USERNAME: Joi.string().description("username for email server"),
     SMTP_PASSWORD: Joi.string().description("password for email server"),
     EMAIL_FROM: Joi.string().description("the from field in the emails sent by the app"),
-    DATABASE_URL: Joi.string().required().description("Database's URL"),
+    PRODUCTS_DATABASE_URL: Joi.string().required().description("Products Database URL"),
     CLOUD_NAME: Joi.string().required().description("Cloud name to store media files"),
     CLOUD_API_KEY: Joi.string().required().description("Cloud api key for remote access"),
     CLOUD_API_SECRET: Joi.string().required().description("Cloud api secret for authentication"),
     CLOUD_PROJECT: Joi.string().default("default-project").description("Master name of the cloud project to be created"),
     EXCHANGE_RATE_KEY: Joi.string().required().description("API key for https://app.exchangerate-api.com/"),
+    CSV_FILE_PATH: Joi.string().required().description("Path to the csv file"),
+    MONGO_DATABASE_URL: Joi.string().required().description("Mongo DB url"),
   })
   .unknown();
 
@@ -68,7 +70,14 @@ module.exports = {
     from: envVars.EMAIL_FROM,
   },
   db: {
-    prisma: envVars.DATABASE_URL,
+    products: envVars.PRODUCTS_DATABASE_URL,
+    mongo: {
+      mongoURI: envVars.MONGO_DATABASE_URL,
+      options: {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      },
+    },
   },
   cloud: {
     name: envVars.CLOUD_NAME,
@@ -77,4 +86,5 @@ module.exports = {
     project: envVars.CLOUD_PROJECT,
   },
   exchangeRateKey: envVars.EXCHANGE_RATE_KEY,
+  csvFilePath: envVars.CSV_FILE_PATH,
 };

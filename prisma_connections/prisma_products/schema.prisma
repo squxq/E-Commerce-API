@@ -1,10 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = env("PRODUCTS_DATABASE_URL")
 }
 
 model product_category {
@@ -41,7 +42,7 @@ model product_item {
   SKU                   String
   QIS                   Int
   images                String[]
-  price                 Decimal
+  price                 String
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   product               product                 @relation(fields: [product_id], references: [id])
@@ -80,13 +81,4 @@ model product_configuration {
   updatedAt           DateTime         @updatedAt
   product_item        product_item     @relation(fields: [product_item_id], references: [id])
   variation_option    variation_option @relation(fields: [variation_option_id], references: [id])
-}
-
-model fx_rates {
-  id              String  @id @default(uuid())
-  source_currency String
-  target_currency String
-  exchange_rate   Decimal
-  valid_from_date Int
-  valid_to_date   Int
 }

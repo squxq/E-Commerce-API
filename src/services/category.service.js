@@ -2,7 +2,7 @@ const httpStatus = require("http-status");
 const hash = require("object-hash");
 const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
-const prisma = require("../config/db");
+const { prismaProducts } = require("../config/db");
 const parser = require("../utils/parser");
 const { uploadImage, deleteImage } = require("../utils/cloudinary");
 const { duplicateNames } = require("../utils/duplicates");
@@ -39,7 +39,7 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file, c
   const { public_id: publicId } = await uploadImage(image.content, "Category", formattedName);
 
   // create category in product_category
-  const result = await prisma.product_category.create({
+  const result = await prismaProducts.product_category.create({
     data: {
       parent_id: parentCategoryId,
       name: categoryName,
@@ -80,7 +80,7 @@ const updateCategory = catchAsync(async (data, image) => {
   }
 
   // Check for duplicate images
-  const category = await prisma.$queryRaw`
+  const category = await prismaProducts.$queryRaw`
     SELECT a.*,
      (
       SELECT COUNT(*)::int FROM
@@ -131,7 +131,7 @@ const updateCategory = catchAsync(async (data, image) => {
     const { public_id: publicId } = await uploadImage(bufferImage.content, "Category", formattedName);
     data.image = publicId;
   }
-  const result = await prisma.product_category.update({
+  const result = await prismaProducts.product_category.update({
     where: {
       id: category[0].id,
     },
@@ -159,7 +159,7 @@ const deleteCategory = catchAsync(async (id) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "Category Id not specified");
   }
 
-  const category = await prisma.$queryRaw`
+  const category = await prismaProducts.$queryRaw`
     SELECT a.*,
     (
       SELECT COUNT(*)::int FROM
@@ -183,7 +183,7 @@ const deleteCategory = catchAsync(async (id) => {
     const { result } = await deleteImage(category[0].image);
     if (result === "not found") throw new ApiError(httpStatus.NOT_FOUND, "Image not found, deletion interrupted");
   }
-  await prisma.$queryRaw`
+  await prismaProducts.$queryRaw`
     DELETE FROM product_category WHERE id = ${category[0].id}
   `;
 });
