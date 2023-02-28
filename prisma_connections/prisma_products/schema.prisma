@@ -42,7 +42,7 @@ model product_item {
   SKU                   String
   QIS                   Int
   images                String[]
-  price                 String
+  price                 Int
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   product               product                 @relation(fields: [product_id], references: [id])

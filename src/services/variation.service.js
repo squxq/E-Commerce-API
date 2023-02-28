@@ -10,20 +10,58 @@ const catchAsync = require("../utils/catchAsync");
  * @returns { Object<id|category_id|name> }
  */
 const createVariation = catchAsync(async (categoryId, name) => {
-  const variation = await prismaProducts.variation.create({
-    data: {
-      category_id: categoryId,
-      name,
-    },
-    select: {
-      id: true,
-      category_id: true,
-      name: true,
-    },
-  });
+  // before creating we need to check if the category is valid which means that the category exists
+  // and is the last layer category
 
-  if (!variation) throw new ApiError(httpStatus.NO_CONTENT, "Variation not created, please try again");
-  return variation;
+  const createVariationTransaction = await prismaProducts.$transaction(async (prisma) => {
+    const lastLayerCategory = await prisma.$queryRaw`
+      WITH RECURSIVE layer AS (
+        SELECT id,
+          name,
+          parent_id,
+          1 AS layer_number
+        FROM product_category
+        WHERE parent_id IS NULL
+
+      UNION ALL
+
+        SELECT child.id,
+          child.name,
+          child.parent_id,
+          layer_number+1 AS layer_number
+        FROM product_category child
+        JOIN layer l
+          ON l.id = child.parent_id
+      )
+      SELECT array_agg(id) AS ids,
+        layer_number
+      FROM layer
+      WHERE layer_number = (SELECT MAX(layer_number) FROM layer)
+      GROUP BY layer_number
+    `;
+    // lastLayerCategory.ids where we need to search
+    if (lastLayerCategory[0].ids.find((id) => id === categoryId)) {
+      const variation = await prisma.variation.create({
+        data: {
+          category_id: categoryId,
+          name,
+        },
+        select: {
+          id: true,
+          category_id: true,
+          name: true,
+        },
+      });
+
+      return [variation];
+    }
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      `You can't create a variation in a category that is not the last layer category, layer: ${lastLayerCategory[0].layer_number}`
+    );
+  });
+  if (!createVariationTransaction[0]) throw new ApiError(httpStatus.NO_CONTENT, "Variation not created, please try again");
+  return createVariationTransaction[0];
 });
 
 /**
@@ -46,20 +84,56 @@ const updateVariation = catchAsync(async (data) => {
     }
   });
 
-  const variation = await prismaProducts.variation.update({
-    where: {
-      id: variationId,
-    },
-    data,
-    select: {
-      id: true,
-      category_id: true,
-      name: true,
-    },
+  const updateVariationTransaction = await prismaProducts.$transaction(async (prisma) => {
+    if (data.category_id) {
+      const lastLayerCategory = await prisma.$queryRaw`
+          WITH RECURSIVE layer AS (
+            SELECT id,
+              name,
+              parent_id,
+              1 AS layer_number
+            FROM product_category
+            WHERE parent_id IS NULL
+
+          UNION ALL
+
+            SELECT child.id,
+              child.name,
+              child.parent_id,
+              layer_number+1 AS layer_number
+            FROM product_category child
+            JOIN layer l
+              ON l.id = child.parent_id
+          )
+          SELECT array_agg(id) AS ids,
+            layer_number
+          FROM layer
+          WHERE layer_number = (SELECT MAX(layer_number) FROM layer)
+          GROUP BY layer_number
+    `;
+      if (lastLayerCategory[0].ids.find((id) => id === data.category_id)) {
+        const variation = await prismaProducts.variation.update({
+          where: {
+            id: variationId,
+          },
+          data,
+          select: {
+            id: true,
+            category_id: true,
+            name: true,
+          },
+        });
+        return [variation];
+      }
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `You can't create a variation in a category that is not the last layer category, layer: ${lastLayerCategory[0].layer_number}`
+      );
+    }
   });
 
-  if (!variation) throw new ApiError(httpStatus.NO_CONTENT, "Variation was not updated, please retry");
-  return variation;
+  if (!updateVariationTransaction[0]) throw new ApiError(httpStatus.NO_CONTENT, "Variation was not updated, please retry");
+  return updateVariationTransaction[0];
 });
 
 /**
