@@ -7,5 +7,6 @@ const { anyFile } = require("../../utils/multer");
 const router = express.Router();
 
 router.post("/create", anyFile(), validate(productValidation.createProduct), productController.createProduct);
+router.post("/create/item", anyFile(), validate(productValidation.createProductItem), productController.createProductItem);
 
 module.exports = router;
