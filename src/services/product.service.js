@@ -169,10 +169,30 @@ class CreateProductItem {
         `;
     });
 
-    let variationIds = await Promise.all(variationsPromises);
-    variationIds = variationIds.map((variationId) => variationId[0]);
+    let variationsIds = await Promise.all(variationsPromises);
+    variationsIds = variationsIds.map((variationId) => variationId[0]);
 
-    const configurationPromises = variationIds.map(async ({ id }) =>
+    const configurationIds = await prisma.$queryRaw`
+        SELECT array_agg(variation_option_id) AS variation_ids
+        FROM product_configuration
+        WHERE product_item_id IN (
+          SELECT b.id
+          FROM product_item AS b
+          WHERE product_id = ${productId}
+        )
+      `;
+
+    if (
+      configurationIds[0].variation_ids.every((element) => {
+        if (variationsIds.map((id) => id.id).includes(element)) {
+          return true;
+        }
+        return false;
+      })
+    )
+      throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
+
+    const configurationPromises = variationsIds.map(async ({ id }) =>
       prisma.product_configuration.create({
         data: {
           product_item_id: createProductItem.id,
@@ -258,6 +278,9 @@ const createProduct = catchAsync(async (data, images) => {
   const formattedPrice = await createNewProductItem.checkPrice();
 
   // check for a main image
+  if (images.length < 1) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "No images provided");
+  }
   let mainImage;
   let hasMain = false;
   if (images.find((image) => image.fieldname === "main")) {
@@ -269,8 +292,9 @@ const createProduct = catchAsync(async (data, images) => {
 
   // upload images
   const imagesArray = await createNewProductItem.uploadImages(images, name);
-  const mainPublicId = imagesArray[0][0];
+  const mainPublicId = imagesArray[0];
   if (hasMain) imagesArray.shift();
+  imagesArray.pop();
 
   // SKU - generation === categoryName + productName + productVariationOptions
   const [sku, orderedOptions] = createNewProductItem.generateSKU(categoryName, name);
@@ -332,7 +356,12 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
   const formattedPrice = await createNewProductItem.checkPrice();
 
   // upload images
-  const [imagesArray, productName] = await createNewProductItem.uploadImages(images, null, productId);
+  if (images.length < 1) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "No images provided");
+  }
+  const imagesArray = await createNewProductItem.uploadImages(images, null, productId);
+  const productName = imagesArray[imagesArray.length - 1];
+  imagesArray.pop();
 
   // SKU - generation === categoryName + productName + productVariationOptions
   const [sku, orderedOptions] = createNewProductItem.generateSKU(categoryName, productName);

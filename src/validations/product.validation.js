@@ -42,7 +42,7 @@ const createProductItem = {
     productId: Joi.string()
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
-      .label("Category Id"),
+      .label("Product Id"),
     quantity: Joi.number().integer().required().greater(0).label("Quantity in Stock"),
     price: Joi.object()
       .keys({
