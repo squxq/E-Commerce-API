@@ -15,10 +15,18 @@ const { duplicateNames } = require("../utils/duplicates");
  * @returns { Object<id|parent_category_id|category_name|category_image|category_description> }
  */
 const createCategory = catchAsync(async (categoryName, parentCategoryId, file, categoryDescription) => {
-  // check if file  is empty
-  if (!file) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
-  }
+  // check if string starts with number
+  if (
+    categoryName.split("").forEach((word) => {
+      if (word.match(/^\d/))
+        throw new ApiError(httpStatus.BAD_REQUEST, "Category name can't have words starting with numbers");
+    })
+  )
+    if (!file) {
+      // check if file is empty
+      throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
+    }
+
   // check for duplicate names
   await duplicateNames(categoryName, parentCategoryId);
 

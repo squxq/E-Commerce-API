@@ -47,7 +47,40 @@ prismaProducts.$on("warn", async (e) => {
 
 mongoose.set("strictQuery", false);
 
-const connectMongo = () => mongoose.connect(config.db.mongo.mongoURI, config.db.mongo.options);
+mongoose.Promise = global.Promise;
+
+function onError(err) {
+  logger.error(`MongoDB Atlas connection error: ${err}`);
+}
+
+function onConnected() {
+  logger.log("debug", "Connected to MongoDB Atlas!");
+}
+
+function onReconnected() {
+  logger.warn("MongoDB Atlas reconnected!");
+}
+
+function onSIGINT() {
+  // eslint-disable-next-line no-undef
+  db.close(() => {
+    logger.warn("MongoDB Atlas default connection disconnected through app termination!");
+    // eslint-disable-next-line no-process-exit
+    process.exit();
+  });
+}
+
+function connectMongo() {
+  const connection = mongoose.connect(config.db.mongo.mongoURI, config.db.mongo.options);
+  const db = mongoose.connection;
+
+  db.on("error", onError);
+  db.on("connected", onConnected);
+  db.on("reconnected", onReconnected);
+
+  process.on("SIGINT", onSIGINT);
+  return connection;
+}
 
 // prisma Middleware
 prismaProducts.$use(prismaMiddleware);

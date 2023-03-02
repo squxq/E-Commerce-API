@@ -6,7 +6,6 @@ const { prismaProducts, connectMongo } = require("./config/db");
 // Express usual app.listen()
 let server;
 connectMongo().then(() => {
-  logger.info("Connected to MongoDB");
   prismaProducts.$connect().then(() => {
     server = app.listen(config.port, () => {
       logger.info(`

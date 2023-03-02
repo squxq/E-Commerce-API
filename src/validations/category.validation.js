@@ -2,8 +2,10 @@ const Joi = require("joi");
 
 const createCategory = {
   body: Joi.object().keys({
-    categoryName: Joi.string().required(),
-    parentCategoryId: Joi.string().guid({ version: ["uuidv4", "uuidv5"] }),
+    categoryName: Joi.string().required().label("Category Name"),
+    parentCategoryId: Joi.string()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Parent Category Id"),
   }),
   file: Joi.object()
     .keys({

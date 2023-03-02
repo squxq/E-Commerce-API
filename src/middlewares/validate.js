@@ -11,7 +11,14 @@ const validate = (schema) => (req, res, next) => {
     .validate(object);
 
   if (error) {
-    const errorMessage = error.details.map((details) => details.message).join(", ");
+    let errorMessage;
+    if (error.details[0].type === "any.required") {
+      errorMessage = `${error.details[0].context.label} not provided`;
+    } else if (error.details[0].type === "string.guid") {
+      errorMessage = `${error.details[0].context.label} is not a valid GUID`;
+    } else {
+      errorMessage = error.details.map((details) => details.message).join(", ");
+    }
     return next(new ApiError(httpStatus.BAD_REQUEST, errorMessage));
   }
 

@@ -23,6 +23,11 @@
     "products:generate": "npx prisma generate --schema prisma_connections/prisma_products/schema.prisma",
     "products:migrate": "npx prisma migrate dev --schema prisma_connections/prisma_products/schema.prisma"
   },
+  "ignore": [
+    "**/node_modules",
+    "**/logs",
+    "**/coverage"
+  ],
   "dependencies": {
     "@prisma/client": "^4.10.1",
     "cloudinary": "^1.34.0",
