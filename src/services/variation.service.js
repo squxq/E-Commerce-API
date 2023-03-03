@@ -110,9 +110,11 @@ const updateVariation = catchAsync(async (data) => {
           FROM layer
           WHERE layer_number = (SELECT MAX(layer_number) FROM layer)
           GROUP BY layer_number
-    `;
+      `;
+
+      console.log(lastLayerCategory);
       if (lastLayerCategory[0].ids.find((id) => id === data.category_id)) {
-        const variation = await prismaProducts.variation.update({
+        const variation = await prisma.variation.update({
           where: {
             id: variationId,
           },
@@ -123,17 +125,30 @@ const updateVariation = catchAsync(async (data) => {
             name: true,
           },
         });
-        return [variation];
+        return variation;
       }
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         `You can't create a variation in a category that is not the last layer category, layer: ${lastLayerCategory[0].layer_number}`
       );
     }
+
+    const variation = await prisma.variation.update({
+      where: {
+        id: variationId,
+      },
+      data,
+      select: {
+        id: true,
+        category_id: true,
+        name: true,
+      },
+    });
+    return variation;
   });
 
-  if (!updateVariationTransaction[0]) throw new ApiError(httpStatus.NO_CONTENT, "Variation was not updated, please retry");
-  return updateVariationTransaction[0];
+  if (!updateVariationTransaction) throw new ApiError(httpStatus.NO_CONTENT, "Variation was not updated, please retry");
+  return updateVariationTransaction;
 });
 
 /**

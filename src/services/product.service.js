@@ -141,6 +141,41 @@ class CreateProductItem {
 
   // createItemTransaction
   async createProductItemTransaction(productId, sku, orderedOptions, imagesArray, formattedPrice, prisma) {
+    const variationsPromises = Object.entries(orderedOptions).map(async ([key, value]) => {
+      return prisma.$queryRaw`
+          SELECT b.id
+          FROM variation AS a
+          JOIN variation_option AS b
+          ON a.name = ${key} AND b.value = ${value}
+          WHERE category_id = ${this.categoryId}
+        `;
+    });
+
+    let variationsIds = await Promise.all(variationsPromises);
+    variationsIds = variationsIds.map((variationId) => variationId[0].id);
+
+    let configurationIds = await prisma.$queryRaw`
+        SELECT array_agg(b.variation_option_id) AS variation_ids
+        FROM product_item AS a
+        LEFT JOIN product_configuration AS b
+        ON b.product_item_id = a.id
+        WHERE a.product_id = ${productId}
+        GROUP BY a.id
+      `;
+
+    configurationIds = configurationIds
+      .map((obj) => obj.variation_ids)
+      .find((arr) => {
+        const check = arr.every((id) => {
+          if (variationsIds.includes(id)) return true;
+          return false;
+        });
+        return check === true;
+      });
+
+    if (configurationIds !== undefined)
+      throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
+
     const createProductItem = await prisma.product_item.create({
       data: {
         product_id: productId,
@@ -159,40 +194,7 @@ class CreateProductItem {
       },
     });
 
-    const variationsPromises = Object.entries(orderedOptions).map(async ([key, value]) => {
-      return prisma.$queryRaw`
-          SELECT b.id
-          FROM variation AS a
-          JOIN variation_option AS b
-          ON a.name = ${key} AND b.value = ${value}
-          WHERE category_id = ${this.categoryId}
-        `;
-    });
-
-    let variationsIds = await Promise.all(variationsPromises);
-    variationsIds = variationsIds.map((variationId) => variationId[0]);
-
-    const configurationIds = await prisma.$queryRaw`
-        SELECT array_agg(variation_option_id) AS variation_ids
-        FROM product_configuration
-        WHERE product_item_id IN (
-          SELECT b.id
-          FROM product_item AS b
-          WHERE product_id = ${productId}
-        )
-      `;
-
-    if (
-      configurationIds[0].variation_ids.every((element) => {
-        if (variationsIds.map((id) => id.id).includes(element)) {
-          return true;
-        }
-        return false;
-      })
-    )
-      throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
-
-    const configurationPromises = variationsIds.map(async ({ id }) =>
+    const configurationPromises = variationsIds.map(async (id) =>
       prisma.product_configuration.create({
         data: {
           product_item_id: createProductItem.id,
