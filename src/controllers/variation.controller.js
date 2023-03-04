@@ -8,16 +8,18 @@ const { variationService } = require("../services");
  * @param { Object } res
  * @property { String } req.body.categoryId
  * @property { String } req.body.name
+ * @property { String } req.body.value
+ * @property { Array } req.body.values
  * @returns { JSON }
  */
 const createVariation = catchAsync(async (req, res) => {
-  const { categoryId, name } = req.body;
+  const { categoryId, name, value = null, values = null } = req.body;
 
-  const result = await variationService.createVariation(categoryId, name);
+  const result = await variationService.createVariation(categoryId, name, value, values);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: ["Variation created successfully"],
+    message: "Variation created successfully",
     output: result,
   });
 });
@@ -61,17 +63,18 @@ const deleteVariation = catchAsync(async (req, res) => {
  * @param { Object } req
  * @param { Object } res
  * @property { String } req.body.variationId
+ * @property { String } req.body.value
  * @property { Array } req.body.values
  * @returns { JSON }
  */
 const createVariationOptions = catchAsync(async (req, res) => {
-  const { variationId, values } = req.body;
+  const { variationId, value = null, values = null } = req.body;
 
-  const result = await variationService.createVariationOptions(variationId, values);
+  const result = await variationService.createVariationOptions(variationId, value, values);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: ["Variation options successfully created"],
+    message: "Variation option(s) successfully created",
     output: result,
   });
 });

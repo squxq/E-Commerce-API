@@ -1,67 +1,173 @@
+const { v4: uuidv4 } = require("uuid");
 const httpStatus = require("http-status");
+const { Prisma } = require("@prisma/client");
 const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
+
+class CreateVariation {
+  constructor(categoryId) {
+    this.categoryId = categoryId;
+  }
+
+  // check if the category is valid
+  async checkCategory(name) {
+    const checkCategoryTransaction = await prismaProducts.$transaction(async (prisma) => {
+      const lastLayerCategory = await prisma.$queryRaw`
+        WITH RECURSIVE layer AS (
+          SELECT id,
+            name,
+            parent_id,
+            1 AS layer_number
+          FROM product_category
+          WHERE parent_id IS NULL
+
+        UNION ALL
+
+          SELECT child.id,
+            child.name,
+            child.parent_id,
+            layer_number+1 AS layer_number
+          FROM product_category child
+          JOIN layer l
+            ON l.id = child.parent_id
+        )
+        SELECT array_agg(id) AS ids,
+          layer_number
+        FROM layer
+        WHERE layer_number = (SELECT MAX(layer_number) FROM layer)
+        GROUP BY layer_number
+      `;
+
+      const result = await prisma.$queryRaw`
+        SELECT array_agg(name) AS names
+        FROM variation
+        WHERE category_id = ${this.categoryId}
+      `;
+
+      return [lastLayerCategory, result];
+    });
+
+    if (checkCategoryTransaction[0].length === 0) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
+
+    if (!checkCategoryTransaction[0][0].ids.includes(this.categoryId))
+      throw new ApiError(httpStatus.BAD_REQUEST, "Category is not valid");
+
+    if (checkCategoryTransaction[1][0].names) {
+      if (checkCategoryTransaction[1][0].names.includes(name))
+        throw new ApiError(httpStatus.BAD_REQUEST, "Variation name is already in use");
+    }
+
+    this.name = name;
+  }
+
+  // check if value(s) is/are valid
+  checkValues(value, values) {
+    if (!value && !values) throw new ApiError(httpStatus.BAD_REQUEST, "At least one value is required");
+
+    if (value && !values) {
+      this.values = [value];
+      return;
+    }
+    if (!value && values.length > 0) {
+      this.values = values;
+      return;
+    }
+
+    if (value && values.length > 0) {
+      if (!values.includes(value)) {
+        values.unshift(value);
+      }
+      this.values = values;
+      // eslint-disable-next-line no-useless-return
+      return;
+    }
+  }
+
+  async variationOptionsTransaction(prisma, variationId) {
+    if (!this.values) throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Class order not correctly followed", false);
+
+    const date = Date.now();
+
+    const valuesParams = this.values.map((value) => [uuidv4(), variationId, value, date]);
+
+    const variationOptions = await prisma.$queryRaw`
+      INSERT INTO "variation_option" ("id", "variation_id", "value", "updatedAt")
+      VALUES ${Prisma.join(
+        valuesParams.map((row) => {
+          row[row.length - 1] = Prisma.sql`to_timestamp(${row[row.length - 1]} / 1000.0)`;
+          return Prisma.sql`(${Prisma.join(row)})`;
+        })
+      )}
+      RETURNING id, variation_id, value
+    `;
+
+    return variationOptions;
+  }
+
+  // check for duplicates before creation
+  async checkDuplicateValues(variationId) {
+    // this means that we are creating variation options on top of an existing variation
+    const result = await prismaProducts.$queryRaw`
+      SELECT a.id, array_agg(b.value) AS values
+      FROM variation AS a
+      LEFT JOIN variation_option AS b
+      ON b.variation_id = a.id
+      WHERE a.id = ${variationId}
+      GROUP BY a.id
+    `;
+
+    if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Invalid variation provided");
+
+    this.values.forEach((value) => {
+      if (result[0].values.includes(value)) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Variation option already exists");
+      }
+    });
+  }
+}
 
 /**
  * @desc Create new Variation Option
  * @param { String } categoryId
  * @param { String } name
- * @returns { Object<id|category_id|name> }
+ * @param { String } value
+ * @param { Array } values
+ * @returns { Object }
  */
-const createVariation = catchAsync(async (categoryId, name) => {
-  // before creating we need to check if the category is valid which means that the category exists
-  // and is the last layer category
+const createVariation = catchAsync(async (categoryId, name, value, values) => {
+  const createNewVariation = new CreateVariation(categoryId);
+  // before creating we need to check if the category is valid which means that the category exists and is the last layer category
+
+  // check if the categoryId is valid
+  await createNewVariation.checkCategory(name);
+
+  // check if value(s) is/are valid
+  createNewVariation.checkValues(value, values);
 
   const createVariationTransaction = await prismaProducts.$transaction(async (prisma) => {
-    const lastLayerCategory = await prisma.$queryRaw`
-      WITH RECURSIVE layer AS (
-        SELECT id,
-          name,
-          parent_id,
-          1 AS layer_number
-        FROM product_category
-        WHERE parent_id IS NULL
+    // create variation
+    const variation = await prisma.variation.create({
+      data: {
+        category_id: categoryId,
+        name,
+      },
+      select: {
+        id: true,
+        category_id: true,
+        name: true,
+      },
+    });
 
-      UNION ALL
+    const variationOptions = await createNewVariation.variationOptionsTransaction(prisma, variation.id);
 
-        SELECT child.id,
-          child.name,
-          child.parent_id,
-          layer_number+1 AS layer_number
-        FROM product_category child
-        JOIN layer l
-          ON l.id = child.parent_id
-      )
-      SELECT array_agg(id) AS ids,
-        layer_number
-      FROM layer
-      WHERE layer_number = (SELECT MAX(layer_number) FROM layer)
-      GROUP BY layer_number
-    `;
-    // lastLayerCategory.ids where we need to search
-    if (lastLayerCategory[0].ids.find((id) => id === categoryId)) {
-      const variation = await prisma.variation.create({
-        data: {
-          category_id: categoryId,
-          name,
-        },
-        select: {
-          id: true,
-          category_id: true,
-          name: true,
-        },
-      });
-
-      return [variation];
-    }
-    throw new ApiError(
-      httpStatus.BAD_REQUEST,
-      `You can't create a variation in a category that is not the last layer category, layer: ${lastLayerCategory[0].layer_number}`
-    );
+    return {
+      variation,
+      [variationOptions.length > 1 ? "variationOptions" : "variationOption"]: variationOptions,
+    };
   });
-  if (!createVariationTransaction[0]) throw new ApiError(httpStatus.NO_CONTENT, "Variation not created, please try again");
-  return createVariationTransaction[0];
+
+  return createVariationTransaction;
 });
 
 /**
@@ -112,7 +218,6 @@ const updateVariation = catchAsync(async (data) => {
           GROUP BY layer_number
       `;
 
-      console.log(lastLayerCategory);
       if (lastLayerCategory[0].ids.find((id) => id === data.category_id)) {
         const variation = await prisma.variation.update({
           where: {
@@ -166,27 +271,33 @@ const deleteVariation = catchAsync(async (variationId) => {
 /**
  * @desc Create variation option(s)
  * @param { String } variationId
+ * @param { String } value
  * @param { Array } values
  * @returns { Array }
  */
-const createVariationOptions = catchAsync(async (variationId, values) => {
-  const result = await prismaProducts.$transaction(
-    values.map((value) =>
-      prismaProducts.variation_option.create({
-        data: {
-          variation_id: variationId,
-          value,
-        },
-        select: {
-          id: true,
-          value: true,
-        },
-      })
-    )
-  );
-  // Check for any irregularity
-  if (!result || result.length === 0) throw new ApiError(httpStatus.NO_CONTENT, "The variation options were not created");
-  return result;
+const createVariationOptions = catchAsync(async (variationId, value, values) => {
+  const createNewVariationOptions = new CreateVariation(null);
+
+  createNewVariationOptions.checkValues(value, values);
+  await createNewVariationOptions.checkDuplicateValues(variationId);
+
+  const variationOptionsTransaction = await prismaProducts.$transaction(async (prisma) => {
+    // get variationId
+    const variation = await prisma.variation.findUnique({
+      where: {
+        id: variationId,
+      },
+      select: { id: true },
+    });
+
+    const variationOptions = await createNewVariationOptions.variationOptionsTransaction(prisma, variation.id);
+
+    return {
+      [variationOptions.length > 1 ? "variationOptions" : "variationOption"]: variationOptions,
+    };
+  });
+
+  return variationOptionsTransaction;
 });
 
 /**

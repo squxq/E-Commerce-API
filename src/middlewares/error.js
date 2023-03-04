@@ -15,7 +15,7 @@ const errorConverter = (err, req, res, next) => {
     const message =
       error instanceof Prisma.PrismaClientKnownRequestError
         ? error.meta.message.charAt(0).toUpperCase() + error.meta.message.substring(1)
-        : error.message.replace(/"/g, "'") || httpStatus[statusCode];
+        : error.message.replace(/"/g, "") || httpStatus[statusCode];
 
     const isOperational = !!(error instanceof mongoose.Error || error instanceof Prisma.PrismaClientKnownRequestError);
     error = new ApiError(statusCode, message, isOperational, err.stack);
@@ -30,7 +30,7 @@ const errorHandler = (err, req, res, next) => {
     statusCode = httpStatus.INTERNAL_SERVER_ERROR;
     message = httpStatus[httpStatus.INTERNAL_SERVER_ERROR];
   }
-  message = message.replace(/"/g, "'");
+  message = message.replace(/"/g, "");
 
   res.locals.errorMessage = err.message;
 

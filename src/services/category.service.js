@@ -5,54 +5,126 @@ const ApiError = require("../utils/ApiError");
 const { prismaProducts } = require("../config/db");
 const parser = require("../utils/parser");
 const { uploadImage, deleteImage } = require("../utils/cloudinary");
-const { duplicateNames } = require("../utils/duplicates");
+
+class Category {
+  constructor(categoryName, parentId = null) {
+    this.categoryName = categoryName;
+    this.parentId = parentId;
+  }
+
+  // check name
+  async validate() {
+    // check if string starts with number
+    this.categoryName.split("").forEach((word) => {
+      if (word.match(/^\d/))
+        throw new ApiError(httpStatus.BAD_REQUEST, "Category name can't have words starting with numbers");
+    });
+
+    // check for duplicate names
+    let result;
+    if (this.parentId) {
+      result = await prismaProducts.$queryRaw`
+        WITH RECURSIVE layer AS (
+          SELECT id,
+              name,
+              parent_id,
+              0 AS layer_number
+            FROM product_category
+            WHERE parent_id IS NULL
+
+          UNION ALL
+
+          SELECT child.id,
+              child.name,
+              child.parent_id,
+              layer_number+1 AS layer_number
+            FROM product_category child
+            JOIN layer l
+              ON l.id = child.parent_id
+        )
+        SELECT a.id, array_agg(b.name) AS names
+        FROM product_category AS a
+        LEFT JOIN layer AS b
+        ON layer_number = (
+          SELECT layer_number
+          FROM layer AS c
+          WHERE c.layer_number > 0
+            AND c.parent_id = a.id
+          LIMIT 1
+        )
+        WHERE a.id = ${this.parentId}
+        GROUP BY a.id
+      `;
+
+      if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Parent category not found");
+    } else {
+      result = await prismaProducts.$queryRaw`
+        SELECT array_agg(a.name) AS names
+        FROM product_category AS a
+        WHERE a.parent_id IS NULL
+      `;
+
+      if (!result[0].names) return this.categoryName;
+    }
+
+    if (result[0].names.includes(this.categoryName)) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Duplicate category name provided");
+    }
+
+    return this.categoryName;
+  }
+
+  // upload image
+  async uploadImage(file) {
+    // check if file is empty
+    if (!file) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
+    }
+
+    // file buffer from data uri string
+    const image = parser(file);
+
+    // folder name
+    const formattedName = encodeURIComponent(
+      this.categoryName
+        .trim()
+        .toLowerCase()
+        .split(" ")
+        .join("_")
+        .replace(/[^a-zA-Z0-9-_]/g, "")
+    );
+
+    // upload image
+    const { public_id: publicId } = await uploadImage(image.content, "Category", formattedName);
+
+    return publicId;
+  }
+}
 
 /**
  * @desc Create New Category
  * @param { String } categoryName
- * @param { String } parentCategoryId
+ * @param { String } parentId
+ * @param { String } description
  * @param { Object } file
- * @returns { Object<id|parent_category_id|category_name|category_image|category_description> }
+ * @returns { Object }
  */
-const createCategory = catchAsync(async (categoryName, parentCategoryId, file, categoryDescription) => {
-  // check if string starts with number
-  if (
-    categoryName.split("").forEach((word) => {
-      if (word.match(/^\d/))
-        throw new ApiError(httpStatus.BAD_REQUEST, "Category name can't have words starting with numbers");
-    })
-  )
-    if (!file) {
-      // check if file is empty
-      throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
-    }
+const createCategory = catchAsync(async (categoryName, parentId, description, file) => {
+  const createNewCategory = new Category(categoryName, parentId);
 
-  // check for duplicate names
-  await duplicateNames(categoryName, parentCategoryId);
-
-  // file buffer from data uri string
-  const image = parser(file);
-
-  // folder name
-  const formattedName = encodeURIComponent(
-    categoryName
-      .trim()
-      .toLowerCase()
-      .split(" ")
-      .join("_")
-      .replace(/[^a-zA-Z0-9-_]/g, "")
-  );
+  // check category name
+  const name = await createNewCategory.validate();
 
   // upload image
-  const { public_id: publicId } = await uploadImage(image.content, "Category", formattedName);
+  const publicId = await createNewCategory.uploadImage(file);
 
   // create category in product_category
   const result = await prismaProducts.product_category.create({
     data: {
-      parent_id: parentCategoryId,
-      name: categoryName,
+      parent_id: parentId,
+      name,
       image: publicId,
-      description: categoryDescription && categoryDescription,
+      description,
     },
     select: {
       id: true,
@@ -62,10 +134,9 @@ const createCategory = catchAsync(async (categoryName, parentCategoryId, file, c
     },
   });
 
-  if (Object.keys(result).length === 0)
-    throw new ApiError(httpStatus.NO_CONTENT, "The category was not created due to a system error, please try again.");
-
-  return result;
+  return {
+    category: result,
+  };
 });
 
 /**
@@ -84,7 +155,7 @@ const updateCategory = catchAsync(async (data, image) => {
 
   // check for duplicate names if data.categoryName exists
   if (data.categoryName) {
-    await duplicateNames(data.categoryName, parentCategoryId);
+    // await duplicateNames(data.categoryName, parentCategoryId);
   }
 
   // Check for duplicate images

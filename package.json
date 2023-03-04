@@ -11,7 +11,7 @@
     "node": ">=19.0.0"
   },
   "scripts": {
-    "dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "inbound:dev": "cross-env NODE_ENV=development nodemon src/index.js",
     "test": "jest -i --colors --verbose --detectOpenHandles",
     "test:watch": "jest -i --watchAll",
     "coverage": "jest -i --coverage",
@@ -49,6 +49,7 @@
     "node-polyglot": "^2.5.0",
     "object-hash": "^3.0.0",
     "pg": "^8.9.0",
+    "pg-promise": "^11.3.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^4.6.1",
     "uuid": "^9.0.0",

@@ -2,10 +2,11 @@ const Joi = require("joi");
 
 const createCategory = {
   body: Joi.object().keys({
-    categoryName: Joi.string().required().label("Category Name"),
-    parentCategoryId: Joi.string()
+    name: Joi.string().required().label("Category Name"),
+    parentId: Joi.string()
       .guid({ version: ["uuidv4", "uuidv5"] })
-      .label("Parent Category Id"),
+      .label("Parent Id"),
+    description: Joi.string().label("Category Description"),
   }),
   file: Joi.object()
     .keys({
@@ -16,7 +17,8 @@ const createCategory = {
       buffer: Joi.binary().encoding("base64").required(),
       size: Joi.number().required(),
     })
-    .required(),
+    .required()
+    .label("Category Image"),
 };
 
 const updateCategory = {

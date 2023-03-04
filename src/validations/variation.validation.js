@@ -7,6 +7,10 @@ const createVariation = {
       .label("Category Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
     name: Joi.string().required().label("Name"),
+    value: Joi.string().label("Variation Option"),
+    values: Joi.array()
+      .items(Joi.string().required().label("Variation Option"), Joi.string().label("Variation Option"))
+      .label("Variation Options"),
   }),
 };
 
@@ -36,9 +40,9 @@ const createVariationOptions = {
       .required()
       .label("Variation Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
+    value: Joi.string().label("Variation Option"),
     values: Joi.array()
       .items(Joi.string().label("Variation Option").required(), Joi.string().label("Variation Option"))
-      .required()
       .label("Values"),
   }),
 };

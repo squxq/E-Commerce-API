@@ -15,7 +15,7 @@ const createProduct = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: [req.polyglot.t("successfulProductCreate")],
+    message: req.polyglot.t("successfulProductCreate"),
     output: result,
   });
 });
@@ -26,6 +26,10 @@ const createProduct = catchAsync(async (req, res) => {
  * @param { Object } res
  * @property { Object } req.body
  * @property { Object } req.files
+ * @property { String } req.body.productId
+ * @property { Number } req.body.quantity
+ * @property { Object } req.body.price
+ * @property { Object } req.body.options
  * @returns { JSON }
  */
 const createProductItem = catchAsync(async (req, res) => {
@@ -34,7 +38,7 @@ const createProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: [req.polyglot.t("successfulProductCreate")],
+    message: req.polyglot.t("successfulProductCreate"),
     output: result,
   });
 });

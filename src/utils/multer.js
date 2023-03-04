@@ -10,7 +10,7 @@ const limits = {
 
 const fileFilter = (req, file, cb) => {
   if (!file.originalname.match(/\.(jpg|JPG|jpeg|JPEG|png|PNG|WEBP|webp|jfif)$/)) {
-    req.fileValidationError = "Only image files are allowed!";
+    req.fileValidationError = "Only image files are allowed";
     return cb(new ApiError(httpStatus.BAD_REQUEST, "Not an image! Please upload only images"), false);
   }
   cb(null, true);
@@ -28,6 +28,10 @@ const singleFile = (name) => (req, res, next) => {
   }).single(name);
 
   upload(req, res, (err) => {
+    // check if image exists
+    if (!req.file) return next(new ApiError(httpStatus.BAD_REQUEST, "No image provided"));
+
+    // check if error exists
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_UNEXPECTED_FILE") {
         return next(new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Cannot upload more than 1 image"));
@@ -50,6 +54,7 @@ const anyFile = () => (req, res, next) => {
   }).any();
 
   upload(req, res, (err) => {
+    if (req.files.length === 0) return next(new ApiError(httpStatus.BAD_REQUEST, "No images provided"));
     if (err) return next(new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err));
     next();
   });

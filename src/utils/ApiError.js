@@ -10,8 +10,6 @@ class ApiError extends Error {
     } else {
       Error.captureStackTrace(this, this.constructor);
     }
-
-    Object.setPrototypeOf(this, Error.prototype);
   }
 }
 

@@ -60,7 +60,7 @@ if (config.env === "production") {
 }
 
 // v1 api routes
-app.use("/api/v1", routes);
+app.use("/inbound/api/v1", routes);
 // app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(docs));
 
 app.all(`"*"`, (req, res, next) => {

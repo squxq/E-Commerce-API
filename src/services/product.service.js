@@ -49,6 +49,8 @@ class CreateProductItem {
       ORDER BY c.name ASC
     `;
 
+    if (allowedOptions.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Category is not valid");
+
     // validate options object
     Object.entries(this.options).forEach(([key, value]) => {
       const exists = allowedOptions.find((option) => {
@@ -88,6 +90,8 @@ class CreateProductItem {
         { session }
       );
       return { currency, fxRate };
+    }).catch(() => {
+      throw new ApiError(httpStatus.BAD_REQUEST, `${this.price.currency} is not a valid currency`);
     });
 
     if (result.currency === null) {
@@ -96,7 +100,7 @@ class CreateProductItem {
 
     let exchangeRate;
     if (result.fxRate === null) {
-      exchangeRate = convertCurrency(this.price.currency, "USD");
+      exchangeRate = await convertCurrency(this.price.currency, "USD");
     } else {
       exchangeRate = parseFloat(result.fxRate.exchange_rate.toString());
     }
@@ -106,6 +110,9 @@ class CreateProductItem {
     );
 
     formattedPrice = Math.round(Math.round((formattedPrice * exchangeRate + Number.EPSILON) * 10) / 10);
+
+    if (formattedPrice < 0) throw new ApiError(httpStatus.BAD_REQUEST, "Price must be greater than 0");
+
     return formattedPrice;
   }
 
@@ -266,6 +273,12 @@ class CreateProductItem {
  * @desc Create new product / product item / product configurations
  * @param { Object } data
  * @param { Array } images
+ * @property { String } data.categoryId
+ * @property { String } data.name
+ * @property { String } data.description
+ * @property { Number } data.quantity
+ * @property { Object } data.price
+ * @property { String } data.options
  * @returns { Array }
  */
 const createProduct = catchAsync(async (data, images) => {
@@ -327,7 +340,11 @@ const createProduct = catchAsync(async (data, images) => {
       prisma
     );
 
-    return [createNewProduct, createProductItem, createProductConfiguration];
+    return {
+      product: createNewProduct,
+      productItem: createProductItem,
+      [createProductConfiguration.length > 1 ? "productConfigurations" : "productConfiguration"]: createProductConfiguration,
+    };
   });
 
   return createProductTransaction;
@@ -347,6 +364,8 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
     where: { id: productId },
     select: { category_id: true }, // product object inside category_id: the actual id
   });
+
+  if (!product) throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
 
   // Initialize createNewProductItem class
   const createNewProductItem = new CreateProductItem(quantity, price, options, product.category_id);
