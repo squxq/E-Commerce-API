@@ -27,7 +27,7 @@ const updateCategory = {
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
       .label("Category Id"),
-    parentId: Joi.string().label("Parent Id"),
+    // parentId: Joi.string().label("Parent Id"),
     name: Joi.string().label("Category Name"),
     description: Joi.string().label("Category Description"),
   }),
@@ -47,7 +47,11 @@ const deleteCategory = {
   params: Joi.object().keys({
     categoryId: Joi.string()
       .required()
-      .guid({ version: ["uuidv4", "uuidv5"] }),
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Category Id"),
+  }),
+  query: Joi.object().keys({
+    type: Joi.string().required().valid("row", "tree").label("Deletion Type"),
   }),
 };
 

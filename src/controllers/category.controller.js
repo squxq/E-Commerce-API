@@ -29,7 +29,7 @@ const createCategory = catchAsync(async (req, res) => {
  * @desc Update Category Controller
  * @param { Object } req
  * @param { Object } res
- * @property { Object } req.body
+ * @property { Object } req.body.categoryId
  * @property { Object } req.file
  * @returns { JSON }
  */
@@ -48,13 +48,15 @@ const updateCategory = catchAsync(async (req, res) => {
  * @param { Object } req
  * @param { Object } res
  * @property { String } req.params.categoryId
+ * @property { Object } req.query
  */
 const deleteCategory = catchAsync(async (req, res) => {
-  await categoryService.deleteCategory(req.params.categoryId);
+  const result = await categoryService.deleteCategory(req.params.categoryId, req.query);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: [req.polyglot.t("successfulCategoryDelete")],
+    message: "Category deleted successfully",
+    output: result,
   });
 });
 

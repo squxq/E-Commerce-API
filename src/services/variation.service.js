@@ -29,7 +29,7 @@ class CreateVariation {
         FROM product_category AS c
         LEFT JOIN variation AS d
         ON d.category_id = c.id
-        WHERE c.id = '057c963d-c91b-4447-92c1-7ddf45c16c66'
+        WHERE c.id = ${this.categoryId}
         GROUP BY c.id
       ) AS f
       ON TRUE

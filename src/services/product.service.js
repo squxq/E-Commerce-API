@@ -49,7 +49,7 @@ class CreateProductItem {
       ORDER BY c.name ASC
     `;
 
-    if (allowedOptions.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Category is not valid");
+    if (allowedOptions.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Category doesnt have any variations");
 
     // validate options object
     Object.entries(this.options).forEach(([key, value]) => {
