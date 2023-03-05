@@ -38,9 +38,7 @@ const updateCategory = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: req.file
-      ? [req.polyglot.t("successfulCategoryDetails"), req.polyglot.t("successfulCategoryImage")]
-      : [req.polyglot.t("successfulCategoryDetails")],
+    message: "Category updated successfully",
     output: result,
   });
 });

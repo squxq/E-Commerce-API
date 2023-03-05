@@ -25,19 +25,22 @@ const updateCategory = {
   body: Joi.object().keys({
     categoryId: Joi.string()
       .required()
-      .guid({ version: ["uuidv4", "uuidv5"] }),
-    parentCategoryId: Joi.string(),
-    categoryName: Joi.string(),
-    categoryDescription: Joi.string(),
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Category Id"),
+    parentId: Joi.string().label("Parent Id"),
+    name: Joi.string().label("Category Name"),
+    description: Joi.string().label("Category Description"),
   }),
-  file: Joi.object().keys({
-    fieldname: Joi.string(),
-    originalname: Joi.string(),
-    encoding: Joi.string(),
-    mimetype: Joi.string(),
-    buffer: Joi.binary().encoding("base64"),
-    size: Joi.number(),
-  }),
+  file: Joi.object()
+    .keys({
+      fieldname: Joi.string(),
+      originalname: Joi.string(),
+      encoding: Joi.string(),
+      mimetype: Joi.string(),
+      buffer: Joi.binary().encoding("base64"),
+      size: Joi.number(),
+    })
+    .label("Category Image"),
 };
 
 const deleteCategory = {

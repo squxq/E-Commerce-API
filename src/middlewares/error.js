@@ -12,10 +12,17 @@ const errorConverter = (err, req, res, next) => {
       error.statusCode || error instanceof mongoose.Error || error instanceof Prisma.PrismaClientKnownRequestError
         ? httpStatus.BAD_REQUEST
         : httpStatus.INTERNAL_SERVER_ERROR;
-    const message =
-      error instanceof Prisma.PrismaClientKnownRequestError
-        ? error.meta.message.charAt(0).toUpperCase() + error.meta.message.substring(1)
-        : error.message.replace(/"/g, "") || httpStatus[statusCode];
+    let message;
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.meta.message) {
+        message = error.meta.message.charAt(0).toUpperCase() + error.meta.message.substring(1);
+      } else {
+        message = `Something went wrong with your request, please try again`;
+      }
+    } else {
+      message = error.message.replace(/"/g, "") || httpStatus[statusCode];
+    }
 
     const isOperational = !!(error instanceof mongoose.Error || error instanceof Prisma.PrismaClientKnownRequestError);
     error = new ApiError(statusCode, message, isOperational, err.stack);

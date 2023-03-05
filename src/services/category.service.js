@@ -13,7 +13,7 @@ class Category {
   }
 
   // check name
-  async validate() {
+  async validateName() {
     // check if string starts with number
     this.categoryName.split("").forEach((word) => {
       if (word.match(/^\d/))
@@ -22,6 +22,7 @@ class Category {
 
     // check for duplicate names
     let result;
+    // check if category is a layer 1 category which means that it doesnt have a parent Id
     if (this.parentId) {
       result = await prismaProducts.$queryRaw`
         WITH RECURSIVE layer AS (
@@ -74,30 +75,80 @@ class Category {
     return this.categoryName;
   }
 
-  // upload image
-  async uploadImage(file) {
-    // check if file is empty
-    if (!file) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
+  // validate category starting with getting the parent id
+  async validateParent(categoryId, categoryName) {
+    const category = await prismaProducts.$queryRaw`
+      SELECT parent_id, name
+      FROM product_category
+      WHERE id = ${categoryId}
+    `;
+
+    if (category.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+
+    if (!category[0].parent_id) {
+      this.parentId = null;
+    } else {
+      this.parentId = category[0].parent_id;
     }
 
-    // file buffer from data uri string
-    const image = parser(file);
+    if (categoryName) {
+      this.categoryName = categoryName;
+      await this.validateName();
+    } else {
+      this.categoryName = category[0].name;
+    }
 
-    // folder name
-    const formattedName = encodeURIComponent(
-      this.categoryName
-        .trim()
-        .toLowerCase()
-        .split(" ")
-        .join("_")
-        .replace(/[^a-zA-Z0-9-_]/g, "")
-    );
+    return [this.parentId, this.categoryName];
+  }
 
-    // upload image
-    const { public_id: publicId } = await uploadImage(image.content, "Category", formattedName);
+  // check for duplicate images
+  async validateImage(file) {
+    // verify if file is empty
+    if (!file) throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
 
-    return publicId;
+    // image buffer
+    const { content: imageBuffer } = parser(file);
+
+    const etag = hash(imageBuffer, { algorithm: "md5" });
+
+    const count = await prismaProducts.$queryRaw`
+      SELECT a.image,
+      (
+        SELECT COUNT(*)::int
+        FROM (
+        SELECT * FROM product_category AS c
+        WHERE
+          CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, ${etag}, '')))
+          / 32 = 1 THEN true ELSE false END
+        LIMIT 1
+        ) AS b
+      )
+      FROM product_category AS a
+      WHERE a.image LIKE '%' || ${etag}
+      LIMIT 1
+   `;
+
+    if (count.length === 0) {
+      // upload image to cloudinary
+      // folder name
+      if (!this.categoryName) throw new ApiError(httpStatus.BAD_REQUEST, "To up");
+
+      const formattedName = encodeURIComponent(
+        this.categoryName
+          .trim()
+          .toLowerCase()
+          .split(" ")
+          .join("_")
+          .replace(/[^a-zA-Z0-9-_]/g, "")
+      );
+
+      // upload image
+      const { public_id: publicId } = await uploadImage(imageBuffer, "Category", formattedName);
+
+      return publicId;
+    }
+
+    return count[0].image;
   }
 }
 
@@ -113,10 +164,10 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
   const createNewCategory = new Category(categoryName, parentId);
 
   // check category name
-  const name = await createNewCategory.validate();
+  const name = await createNewCategory.validateName();
 
   // upload image
-  const publicId = await createNewCategory.uploadImage(file);
+  const publicId = await createNewCategory.validateImage(file);
 
   // create category in product_category
   const result = await prismaProducts.product_category.create({
@@ -142,77 +193,37 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
 /**
  * @desc Update category
  * @param { Object } data
- * @param { Object } image
- * @returns { Object<id|parent_category_id|category_name|category_image|category_description> }
+ * @param { Object } imageUpdate
+ * @param { String } data.categoryId
+ * @returns { Object }
  */
-const updateCategory = catchAsync(async (data, image) => {
-  // check for data to update category
-  const { categoryId, parentCategoryId = null } = data;
+const updateCategory = catchAsync(async (data, imageUpdate) => {
+  const updateNewCategory = new Category();
+
+  const { categoryId } = data;
+  // eslint-disable-next-line no-param-reassign
   delete data.categoryId;
-  if (!image && Object.keys(data).length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "No data to update category");
+
+  // validate data object for something to update
+  if (!imageUpdate && Object.keys(data).length === 0) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
   }
 
-  // check for duplicate names if data.categoryName exists
-  if (data.categoryName) {
-    // await duplicateNames(data.categoryName, parentCategoryId);
+  // validate category Id and name update if exists
+  const [parentId, name] = await updateNewCategory.validateParent(categoryId, data.name);
+
+  // eslint-disable-next-line no-param-reassign
+  data.name = name;
+
+  // check for a duplicate image in the db
+  if (imageUpdate) {
+    // eslint-disable-next-line no-param-reassign
+    data.image = await updateNewCategory.validateImage(imageUpdate);
   }
 
-  // Check for duplicate images
-  const category = await prismaProducts.$queryRaw`
-    SELECT a.*,
-     (
-      SELECT COUNT(*)::int FROM
-      (
-        SELECT * FROM product_category AS c
-        WHERE
-          CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
-          / CHAR_LENGTH(SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31 ))) = 1 THEN true ELSE false END
-        LIMIT 2
-      ) AS b
-    )
-    FROM product_category AS a
-    WHERE id = ${categoryId}
-  `;
-
-  if (category.length === 0) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
-  }
-
-  /* eslint no-param-reassign: ["error", { "props": false }] */
-  Object.keys(data).forEach((property) => {
-    data[`${property.replace(/\.?([A-Z])/g, (x, y) => `_${y.toLowerCase()}`).replace("category_", "")}`] = data[property];
-    delete data[property];
-  });
-
-  const bufferImage = parser(image);
-  if (
-    image &&
-    category[0].image.substring(category[0].image.length - 32) !== hash(bufferImage.content, { algorithm: "md5" })
-  ) {
-    // folder name
-    const formattedName = encodeURIComponent(
-      category[0].name
-        .trim()
-        .toLowerCase()
-        .split(" ")
-        .join("_")
-        .replace(/[^a-zA-Z0-9-_]/g, "")
-    );
-
-    // if it is the only image - delete it
-    if (category[0].count === 1) {
-      const { result } = await deleteImage(category[0].image);
-      if (result === "not found") throw new ApiError(httpStatus.NOT_FOUND, "Image not found, deletion interrupted");
-    }
-
-    // upload image
-    const { public_id: publicId } = await uploadImage(bufferImage.content, "Category", formattedName);
-    data.image = publicId;
-  }
   const result = await prismaProducts.product_category.update({
     where: {
-      id: category[0].id,
+      id: categoryId,
     },
     data,
     select: {
@@ -223,10 +234,9 @@ const updateCategory = catchAsync(async (data, image) => {
     },
   });
 
-  if (Object.keys(result).length === 0)
-    throw new ApiError(httpStatus.NO_CONTENT, "The category was not updated due to a system error, please try again.");
-
-  return result;
+  return {
+    category: result,
+  };
 });
 
 /**

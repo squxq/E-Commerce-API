@@ -12,51 +12,36 @@ class CreateVariation {
 
   // check if the category is valid
   async checkCategory(name) {
-    const checkCategoryTransaction = await prismaProducts.$transaction(async (prisma) => {
-      const lastLayerCategory = await prisma.$queryRaw`
-        WITH RECURSIVE layer AS (
-          SELECT id,
-            name,
-            parent_id,
-            1 AS layer_number
-          FROM product_category
-          WHERE parent_id IS NULL
-
-        UNION ALL
-
-          SELECT child.id,
-            child.name,
-            child.parent_id,
-            layer_number+1 AS layer_number
-          FROM product_category child
-          JOIN layer l
-            ON l.id = child.parent_id
+    const checkCategoryQuery = await prismaProducts.$queryRaw`
+      SELECT *
+      FROM (
+        SELECT array_agg(a.id) AS ids
+        FROM product_category AS a
+        WHERE a.id NOT IN (
+          SELECT b.parent_id
+          FROM product_category AS b
+          WHERE b.parent_id IS NOT NULL
         )
-        SELECT array_agg(id) AS ids,
-          layer_number
-        FROM layer
-        WHERE layer_number = (SELECT MAX(layer_number) FROM layer)
-        GROUP BY layer_number
-      `;
+      ) AS e
+      JOIN
+      (
+        SELECT c.id AS category_id, array_agg(d.name) AS names
+        FROM product_category AS c
+        LEFT JOIN variation AS d
+        ON d.category_id = c.id
+        WHERE c.id = '057c963d-c91b-4447-92c1-7ddf45c16c66'
+        GROUP BY c.id
+      ) AS f
+      ON TRUE
+    `;
 
-      const result = await prisma.$queryRaw`
-        SELECT array_agg(name) AS names
-        FROM variation
-        WHERE category_id = ${this.categoryId}
-      `;
+    if (!checkCategoryQuery[0].category_id) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
 
-      return [lastLayerCategory, result];
-    });
-
-    if (checkCategoryTransaction[0].length === 0) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
-
-    if (!checkCategoryTransaction[0][0].ids.includes(this.categoryId))
+    if (!checkCategoryQuery[0].ids.includes(this.categoryId))
       throw new ApiError(httpStatus.BAD_REQUEST, "Category is not valid");
 
-    if (checkCategoryTransaction[1][0].names) {
-      if (checkCategoryTransaction[1][0].names.includes(name))
-        throw new ApiError(httpStatus.BAD_REQUEST, "Variation name is already in use");
-    }
+    if (checkCategoryQuery[0].names.includes(name))
+      throw new ApiError(httpStatus.BAD_REQUEST, "Variation name is already in use");
 
     this.name = name;
   }

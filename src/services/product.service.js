@@ -398,7 +398,10 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
       prisma
     );
 
-    return [createNewProditem, createProductConfiguration];
+    return {
+      productItem: createNewProditem,
+      [createProductConfiguration.length > 1 ? "productConfigurations" : "productConfiguration"]: createProductConfiguration,
+    };
   });
 
   return createProductItemTransaction;
