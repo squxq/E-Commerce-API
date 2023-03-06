@@ -29,7 +29,7 @@ const singleFile = (name) => (req, res, next) => {
 
   upload(req, res, (err) => {
     // check if image exists
-    if (!req.file) return next(new ApiError(httpStatus.BAD_REQUEST, "No image provided"));
+    // if (!req.file) return next(new ApiError(httpStatus.BAD_REQUEST, "No image provided"));
 
     // check if error exists
     if (err instanceof multer.MulterError) {
@@ -54,7 +54,7 @@ const anyFile = () => (req, res, next) => {
   }).any();
 
   upload(req, res, (err) => {
-    if (req.files.length === 0) return next(new ApiError(httpStatus.BAD_REQUEST, "No images provided"));
+    // if (req.files.length === 0) return next(new ApiError(httpStatus.BAD_REQUEST, "No images provided"));
     if (err) return next(new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err));
     next();
   });

@@ -79,7 +79,7 @@ class Category {
   // validate category starting with getting the parent id
   async validateParent(categoryId, categoryName) {
     const category = await prismaProducts.$queryRaw`
-        SELECT parent_id, name
+        SELECT id, parent_id, name
         FROM product_category
         WHERE id = ${categoryId}
       `;
@@ -98,6 +98,8 @@ class Category {
     } else {
       this.categoryName = category[0].name;
     }
+
+    this.categoryId = category[0].id;
 
     return {
       parentId: this.parentId,
@@ -156,7 +158,7 @@ class Category {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  async updateProductsVariations(prisma, parentId, { allProducts, allVariations }) {
+  async updateProductsVariations(prisma, { allProducts, allVariations }) {
     let updateAllProducts;
     let updateAllVariations;
 
@@ -166,7 +168,7 @@ class Category {
 
       updateAllProducts = await prisma.$queryRaw`
             UPDATE product AS a
-            SET category_id = ${parentId}
+            SET category_id = ${this.parentId}
             FROM
             (
               VALUES
@@ -183,7 +185,7 @@ class Category {
 
       updateAllVariations = await prisma.$queryRaw`
             UPDATE variation AS a
-            SET category_id = ${parentId}
+            SET category_id = ${this.parentId}
             FROM
             (
               VALUES
@@ -200,80 +202,46 @@ class Category {
     };
   }
 
-  // eslint-disable-next-line class-methods-use-this
-  async statusDeletedDeleteCategory(prisma, categoryId) {
-    return prisma.product_category.delete({
-      where: {
-        id: categoryId,
-      },
-      select: {
-        id: true,
-        parent_id: true,
-        name: true,
-        image: true,
-        description: true,
-      },
-    });
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  async statusActiveDeleteCategory(prisma, categoryId) {
-    return prisma.product_category.update({
-      where: {
-        id: categoryId,
-      },
-      data: {
-        status: "DELETED",
-      },
-      select: {
-        id: true,
-        parent_id: true,
-        name: true,
-        image: true,
-        description: true,
-      },
-    });
-  }
-
-  async updateResources(categoryId, parentId, status) {
+  async updateResources() {
     const updateResourcesTransaction = await prismaProducts.$transaction(async (prisma) => {
-      let deletedCategory;
-      let updateProducts;
-      let updateVariations;
+      const allProducts = await prisma.product.findMany({
+        where: {
+          category_id: this.categoryId,
+        },
+        select: {
+          id: true,
+        },
+      });
 
-      if (status === "DELETED") {
-        deletedCategory = await this.statusDeletedDeleteCategory(prisma, categoryId);
-      }
+      const allVariations = await prisma.variation.findMany({
+        where: {
+          category_id: this.categoryId,
+        },
+        select: {
+          id: true,
+        },
+      });
 
-      if (status === "ACTIVE") {
-        const allProducts = await prisma.product.findMany({
-          where: {
-            category_id: categoryId,
-          },
-          select: {
-            id: true,
-          },
-        });
+      const { updateAllProducts, updateAllVariations } = await this.updateProductsVariations(prisma, {
+        allProducts,
+        allVariations,
+      });
 
-        const allVariations = await prisma.variation.findMany({
-          where: {
-            category_id: categoryId,
-          },
-          select: {
-            id: true,
-          },
-        });
+      const updateProducts = updateAllProducts;
+      const updateVariations = updateAllVariations;
 
-        const { updateAllProducts, updateAllVariations } = await this.updateProductsVariations(prisma, parentId, {
-          allProducts,
-          allVariations,
-        });
-
-        updateProducts = updateAllProducts;
-        updateVariations = updateAllVariations;
-
-        deletedCategory = await this.statusActiveDeleteCategory(prisma, categoryId);
-      }
+      const deletedCategory = await prisma.product_category.delete({
+        where: {
+          id: this.categoryId,
+        },
+        select: {
+          id: true,
+          parent_id: true,
+          name: true,
+          image: true,
+          description: true,
+        },
+      });
 
       return {
         category: deletedCategory,
@@ -286,29 +254,25 @@ class Category {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  async updateCategories(categoryId, parentId, status) {
+  async updateCategories() {
     const updateCategoriesTransaction = await prismaProducts.$transaction(async (prisma) => {
-      let deletedCategory;
+      let allChildren = await prisma.product_category.findMany({
+        where: {
+          parent_id: this.categoryId,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      allChildren = allChildren.map((child) => [child.id]);
+
       let updateAllChildren;
 
-      if (status === "DELETED") {
-        deletedCategory = await this.statusDeletedDeleteCategory(prisma, categoryId);
-      }
-      if (status === "ACTIVE") {
-        let allChildren = await prisma.product_category.findMany({
-          where: {
-            parent_id: categoryId,
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        allChildren = allChildren.map((child) => [child.id]);
-
+      if (allChildren.length > 0) {
         updateAllChildren = await prisma.$queryRaw`
           UPDATE product_category AS a
-          SET parent_id = ${parentId}
+          SET parent_id = ${this.parentId}
           FROM
           (
             VALUES
@@ -317,9 +281,20 @@ class Category {
           WHERE b.id = a.id
           RETURNING a.id, a.parent_id, a.name, a.image, a.description
         `;
-
-        deletedCategory = await this.statusActiveDeleteCategory(prisma, categoryId);
       }
+
+      const deletedCategory = await prisma.product_category.delete({
+        where: {
+          id: this.categoryId,
+        },
+        select: {
+          id: true,
+          parent_id: true,
+          name: true,
+          image: true,
+          description: true,
+        },
+      });
 
       return {
         category: deletedCategory,
@@ -330,175 +305,142 @@ class Category {
     return updateCategoriesTransaction;
   }
 
-  // async deleteTransaction(categoryId, parentId, status) {
-  //   const deleteCategoriesTransaction = await prismaProducts.$transaction(async (prisma) => {
-  //     // get the tree structure
-  //     let treeIds = await prisma.$queryRaw`
-  //       WITH RECURSIVE category_data AS (
-  //         (
-  //           SELECT id, 1 AS level
-  //           FROM product_category
-  //           WHERE id = ${categoryId}
-  //         )
+  async deleteTree(lastLayer = null) {
+    const deleteCategoriesTransaction = await prismaProducts.$transaction(async (prisma) => {
+      let treeIds = [this.categoryId];
+      if (!lastLayer) {
+        // get the tree structure
+        treeIds = await prisma.$queryRaw`
+          WITH RECURSIVE category_data AS (
+            (
+              SELECT id, 1 AS level
+              FROM product_category
+              WHERE id = ${this.categoryId}
+            )
 
-  //         UNION ALL
+            UNION ALL
 
-  //         (
-  //           SELECT this.id, prior.level + 1
-  //           FROM category_data prior
-  //           INNER JOIN product_category this ON this.parent_id = prior.id
-  //         )
-  //       )
-  //       SELECT e.id
-  //       FROM category_data e
-  //       ORDER BY e.level
-  //     `;
+            (
+              SELECT this.id, prior.level + 1
+              FROM category_data prior
+              INNER JOIN product_category this ON this.parent_id = prior.id
+            )
+          )
+          SELECT e.id
+          FROM category_data e
+          ORDER BY e.level
+        `;
 
-  //     treeIds = treeIds.map((id) => id.id);
+        treeIds = treeIds.map((id) => id.id);
+      }
 
-  //     let allProducts = await prisma.product.findMany({
-  //       where: { id: { in: treeIds } },
-  //       select: { id: true },
-  //     });
+      // delete the tree - not optimal
+      // https://stackoverflow.com/questions/61756075/postgres-variable-for-multiple-delete-statements check tomorrow
+      const productConfigurations = await prisma.$queryRaw`
+        DELETE FROM product_configuration AS a
+        WHERE a.product_item_id IN (
+          SELECT b.id
+          FROM product_item AS b
+          WHERE b.product_id IN (
+            SELECT c.id
+            FROM product AS c
+            WHERE category_id IN (${Prisma.join(treeIds)})
+          )
+        )
+        RETURNING a.id, a.product_item_id, a.variation_option_id
+      `;
 
-  //     let allVariations = await prisma.variation.findMany({
-  //       where: { id: { in: treeIds } },
-  //       select: { id: true },
-  //     });
-  //   });
+      const productItems = await prisma.$queryRaw`
+        DELETE FROM product_item AS d
+        WHERE d.product_id IN (
+          SELECT c.id
+          FROM product AS c
+          WHERE category_id IN (${Prisma.join(treeIds)})
+        )
+        RETURNING d.id, d.product_id, d."SKU", d."QIS", d.images, d.price
+      `;
 
-  //   return deleteCategoriesTransaction;
-  // }
+      const products = await prisma.$queryRaw`
+        DELETE FROM product AS e
+        WHERE e.category_id IN (${Prisma.join(treeIds)})
+        RETURNING e.id, e.category_id, e.name, e.description, e.image
+      `;
 
-  async deleteCategoryTransaction(categoryId, status) {
-    if (status === "DELETED") {
-      return this.statusDeletedDeleteCategory(prismaProducts, categoryId);
-    }
+      const variationOptions = await prisma.$queryRaw`
+        DELETE FROM variation_option AS f
+        WHERE f.variation_id IN (
+          SELECT g.id
+          FROM variation AS g
+          WHERE category_id IN (${Prisma.join(treeIds)})
+        )
+        RETURNING f.id, f.variation_id, f.value
+      `;
 
-    if (status === "ACTIVE") {
-      return this.statusActiveDeleteCategory(prismaProducts, categoryId);
-    }
+      const variations = await prisma.$queryRaw`
+        DELETE FROM variation AS h
+        WHERE h.category_id IN (${Prisma.join(treeIds)})
+        RETURNING h.id, h.category_id, h.name
+      `;
+
+      const categories = await prisma.$queryRaw`
+        DELETE FROM product_category AS i
+        WHERE i.id IN (${Prisma.join(treeIds)})
+        RETURNING i.id, i.parent_id, i.name, i.image, i.description
+      `;
+
+      return { categories, products, variations, productItems, variationOptions, productConfigurations };
+    });
+
+    return deleteCategoriesTransaction;
   }
 
   // validate check wheter the category is a last layer category or not
-  async categoryDelete(categoryId) {
-    const categoryTransaction = await prismaProducts.$transaction(async (prisma) => {
-      const lastLayerCategory = await prisma.$queryRaw`
-        SELECT b.id AS category_id, b.parent_id, b.status, array_agg(a.id) AS ids
-        FROM product_category AS a
-        LEFT JOIN product_category AS b
-        ON b.id = ${categoryId}
-        WHERE a.id NOT IN (
-          SELECT b.parent_id
-            FROM product_category AS b
-            WHERE b.parent_id IS NOT NULL
+  async deleteValidation(categoryId) {
+    // check if category exists
+    await this.validateParent(categoryId, null);
+    // check if it has resources
+    const resources = await prismaProducts.$queryRaw`
+      SELECT c.* FROM (
+        (
+          SELECT a.id
+          FROM product AS a
+          WHERE a.category_id = ${this.categoryId}
+          LIMIT 1
         )
-        GROUP BY b.id, b.parent_id, b.status
-      `;
+      UNION ALL
+        (
+          SELECT b.id
+          FROM variation AS b
+          WHERE b.category_id = ${this.categoryId}
+          LIMIT 1
+        )
+      ) AS c
+    `;
 
-      if (!lastLayerCategory[0].category_id) throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+    // doesnt have resources
+    if (resources.length === 0) {
+      return this.updateCategories();
+    }
 
-      let solution;
+    // has resources
+    if (resources.length > 0) {
+      // check for siblings
+      const siblings = await prismaProducts.$queryRaw`
+        SELECT id
+        FROM product_category
+        WHERE parent_id = ${this.parentId} AND id != ${this.categoryId}
+        `;
 
-      // check if parent_id is null - if yes bin them
-      if (!lastLayerCategory[0].parent_id) {
-        solution = "delete tree";
-      } else if (lastLayerCategory[0].ids.includes(categoryId)) {
-        // this is a category that can have variations and products, etc
-        lastLayerCategory[0].ids.splice(lastLayerCategory[0].ids.indexOf(categoryId), 1);
-
-        // check for resources before checking for siblings
-        const firstProduct = await prisma.product.findFirst({
-          where: {
-            category_id: categoryId,
-          },
-          select: {
-            id: true,
-          },
-        });
-        const firstVariation = await prisma.variation.findFirst({
-          where: {
-            category_id: categoryId,
-          },
-          select: {
-            id: true,
-          },
-        });
-
-        if (!firstProduct && !firstVariation) {
-          solution = "delete category";
-        } else {
-          const siblings = await prismaProducts.$queryRaw`
-              SELECT array_agg(a.id) AS ids
-              FROM product_category AS a
-              WHERE parent_id = ${lastLayerCategory[0].parent_id} AND id != ${categoryId}
-            `;
-
-          if (siblings[0].ids) {
-            solution = "delete tree";
-          } else {
-            solution = "update resources";
-          }
-        }
-      } else {
-        solution = "update categories";
+      // if doesnt have siblings
+      if (siblings.length === 0) {
+        return this.updateResources();
       }
 
-      return {
-        solution,
-        category_id: lastLayerCategory[0].category_id,
-        parent_id: lastLayerCategory[0].parent_id,
-        status: lastLayerCategory[0].status,
-      };
-    });
-
-    // category transaction will return either "delete" or "update" if delete we will have two options "tree" or "category"
-    // if update we will have two options "resources" or "categories"
-    if (categoryTransaction.solution === "delete tree") {
-      // delete all records associated with this category
-      // we need the tree structure and the product and variation ids associated with that structure
-      // not working still
-      // const deleteTransaction = await this.deleteTransaction(
-      //   categoryTransaction.category_id,
-      //   categoryTransaction.parent_id,
-      //   categoryTransaction.status
-      // );
-      // return deleteTransaction;
-    }
-
-    if (categoryTransaction.solution === "delete category") {
-      const deleteCategoryTransaction = await this.deleteCategoryTransaction(
-        categoryTransaction.category_id,
-        categoryTransaction.status
-      );
-
-      return deleteCategoryTransaction;
-    }
-
-    if (categoryTransaction.solution === "update resources") {
-      // move resources to parent category then delete category where id = categoryId
-      // resources are from product and variation tables
-
-      const updateResourcesTransaction = await this.updateResources(
-        categoryTransaction.category_id,
-        categoryTransaction.parent_id,
-        categoryTransaction.status
-      );
-
-      return updateResourcesTransaction;
-    }
-
-    if (categoryTransaction.solution === "update categories") {
-      // move children categories to parent category then delete category where id = categoryId
-      // const updateCategoriesTranaction = await this.updateCategories()
-
-      const updateCategoriesTransaction = await this.updateCategories(
-        categoryTransaction.category_id,
-        categoryTransaction.parent_id,
-        categoryTransaction.status
-      );
-
-      return updateCategoriesTransaction;
+      // has siblings
+      if (siblings.length > 0) {
+        // tree deletion is required
+        return this.deleteTree(true);
+      }
     }
   }
 }
@@ -603,8 +545,11 @@ const deleteCategory = catchAsync(async (id, query) => {
 
   // delete type ["row", "tree"] -- row deletes the row and establishes the new parent for the children / tree deletes the row and its children
   if (query.type === "row") {
-    // row deletion type
-    return deleteNewCategory.categoryDelete(id);
+    return deleteNewCategory.deleteValidation(id);
+  }
+
+  if (query.type === "tree") {
+    return deleteNewCategory.deleteTree();
   }
   // with type ["tree"] it will use the function deleteTransaction() in the Category class
 
