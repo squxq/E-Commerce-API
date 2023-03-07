@@ -162,17 +162,18 @@ class Category {
     const count = await prisma.$queryRaw`
       SELECT a.image,
       (
-        SELECT COUNT(*)::int FROM
-        (
-          SELECT * FROM product_category AS c
-          WHERE
-            CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
-            / 32 = 1 THEN true ELSE false END
-          LIMIT 2
-        ) AS b
+      SELECT COUNT(*)::int FROM
+      (
+        SELECT * FROM product_category AS c
+        WHERE
+        CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
+        / 32 = 1 THEN true ELSE false END
+        LIMIT 2
+      ) AS b
       )
       FROM product_category AS a
-      LIMIT 1
+      WHERE id = ${this.categoryId}
+      LIMIT 2
     `;
     // [{ image: "string", count: 1 }] eg
 
@@ -196,7 +197,7 @@ class Category {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  async updateProductsVariations(prisma, { allProducts, allVariations }) {
+  async updateProductsVariations(prisma, { allProducts, allVariations }, reverse, childId) {
     let updateAllProducts;
     let updateAllVariations;
 
@@ -206,7 +207,7 @@ class Category {
 
       updateAllProducts = await prisma.$queryRaw`
             UPDATE product AS a
-            SET category_id = ${this.parentId}
+            SET category_id = ${reverse ? childId : this.parentId}
             FROM
             (
               VALUES
@@ -223,7 +224,7 @@ class Category {
 
       updateAllVariations = await prisma.$queryRaw`
             UPDATE variation AS a
-            SET category_id = ${this.parentId}
+            SET category_id = ${reverse ? childId : this.parentId}
             FROM
             (
               VALUES
@@ -240,7 +241,10 @@ class Category {
     };
   }
 
-  async updateResources() {
+  async updateResources(reverse = false, childId = null) {
+    if (!reverse && !childId)
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong when updating resources");
+
     const updateResourcesTransaction = await prismaProducts.$transaction(async (prisma) => {
       const allProducts = await prisma.product.findMany({
         where: {
@@ -260,20 +264,26 @@ class Category {
         },
       });
 
-      const { updateAllProducts, updateAllVariations } = await this.updateProductsVariations(prisma, {
-        allProducts,
-        allVariations,
-      });
+      const { updateAllProducts, updateAllVariations } = await this.updateProductsVariations(
+        prisma,
+        {
+          allProducts,
+          allVariations,
+        },
+        reverse,
+        childId
+      );
 
-      const updateProducts = updateAllProducts;
-      const updateVariations = updateAllVariations;
+      let deletedCategory;
 
-      const deletedCategory = await this.deleteImageCategory(prisma);
+      if (!reverse) {
+        deletedCategory = await this.deleteImageCategory(prisma);
+      }
 
       return {
         category: deletedCategory,
-        products: updateProducts,
-        variations: updateVariations,
+        products: updateAllProducts,
+        variations: updateAllVariations,
       };
     });
 
@@ -414,6 +424,37 @@ class Category {
         `;
       }
 
+      const imagePublicIds = await prisma.$queryRaw`
+        SELECT a.image,
+        (
+        SELECT COUNT(*)::int FROM
+        (
+          SELECT * FROM product_category AS c
+          WHERE
+          CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
+          / 32 = 1 THEN true ELSE false END
+          LIMIT 2
+        ) AS b
+        )
+        FROM product_category AS a
+        WHERE id IN (${Prisma.join(treeIds)})
+      `;
+
+      const imageCount = {};
+      imagePublicIds.forEach(async ({ image, count }) => {
+        if (count === 1) {
+          await deleteImage(image);
+        } else if (image in imageCount) {
+          if (imageCount[image] - 1 === 0) {
+            await deleteImage(image);
+          } else {
+            imageCount[image] -= 1;
+          }
+        } else {
+          imageCount[image] = count - 1;
+        }
+      });
+
       const categories = await prisma.$queryRaw`
         DELETE FROM product_category AS i
         WHERE i.id IN (${Prisma.join(treeIds)})
@@ -426,28 +467,34 @@ class Category {
     return deleteCategoriesTransaction;
   }
 
-  // validate check wheter the category is a last layer category or not
-  async deleteValidation(categoryId) {
-    // check if category exists
-    await this.validateParent(categoryId, null);
-    // check if it has resources
+  async checkResources(parentId = null) {
     const resources = await prismaProducts.$queryRaw`
       SELECT c.* FROM (
         (
           SELECT a.id
           FROM product AS a
-          WHERE a.category_id = ${this.categoryId}
+          WHERE a.category_id = ${!parentId ? this.categoryId : parentId}
           LIMIT 1
         )
       UNION ALL
         (
           SELECT b.id
           FROM variation AS b
-          WHERE b.category_id = ${this.categoryId}
+          WHERE b.category_id = ${!parentId ? this.categoryId : parentId}
           LIMIT 1
         )
       ) AS c
     `;
+
+    return resources;
+  }
+
+  // validate check wheter the category is a last layer category or not
+  async deleteValidation(categoryId) {
+    // check if category exists
+    await this.validateParent(categoryId, null);
+    // check if it has resources
+    const resources = await this.checkResources();
 
     // doesnt have resources
     if (resources.length === 0) {
@@ -457,7 +504,10 @@ class Category {
     // has resources
     // check for parent id
     if (!this.parentId) {
-      return this.deleteTree(true);
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Its not possible to save resources deleting the current category. Change: save=false"
+      );
     }
 
     if (resources.length > 0) {
@@ -476,8 +526,29 @@ class Category {
       // has siblings
       if (siblings.length > 0) {
         // tree deletion is required
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Its not possible to save resources deleting the current category. Change: save=false"
+        );
+      }
+    }
+  }
+
+  // create and update incompatibilities - creates on top of existing resources / moves to category with existing resources
+  async checkIncompatibilities(save, childId, parentId = null) {
+    // check for existing reources
+    if (parentId) this.categoryId = parentId;
+    const resources = await this.checkResources(this.categoryId);
+
+    // has resources
+    if (resources.length !== 0) {
+      // if customer wants to delete resources - tree deletion
+      if (!save) {
         return this.deleteTree(true);
       }
+
+      // if user wants to maintain resources
+      return this.updateResources(true, childId);
     }
   }
 }
@@ -490,7 +561,7 @@ class Category {
  * @param { Object } file
  * @returns { Object }
  */
-const createCategory = catchAsync(async (categoryName, parentId, description, file) => {
+const createCategory = catchAsync(async (categoryName, parentId, description, file, query) => {
   const createNewCategory = new Category(categoryName, parentId);
 
   // check category name
@@ -500,7 +571,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
   const publicId = await createNewCategory.validateImage(file);
 
   // create category in product_category
-  const result = await prismaProducts.product_category.create({
+  let result = await prismaProducts.product_category.create({
     data: {
       parent_id: parentId,
       name,
@@ -515,8 +586,20 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
     },
   });
 
+  const incompatibilities = await createNewCategory.checkIncompatibilities(query.save, result.id).catch(async () => {
+    // delete just created category
+    await prismaProducts.product_category.delete({
+      where: {
+        id: result.id,
+      },
+    });
+
+    result = undefined;
+  });
+
   return {
     category: result,
+    incompatibilities,
   };
 });
 
@@ -527,7 +610,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
  * @param { String } data.categoryId
  * @returns { Object }
  */
-const updateCategory = catchAsync(async (data, imageUpdate) => {
+const updateCategory = catchAsync(async (data, imageUpdate, query) => {
   const updateNewCategory = new Category();
 
   const { categoryId } = data;
@@ -551,6 +634,16 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
     data.image = await updateNewCategory.validateImage(imageUpdate);
   }
 
+  // not working
+  // let incompatibilities;
+  // if (data.parentId) {
+  //   incompatibilities = await updateNewCategory.checkIncompatibilities(query.save, categoryId, data.parentId);
+  //   // eslint-disable-next-line no-param-reassign
+  //   data.parent_id = data.parentId;
+  //   // eslint-disable-next-line no-param-reassign
+  //   delete data.parentId;
+  // }
+
   const result = await prismaProducts.product_category.update({
     where: {
       id: categoryId,
@@ -566,6 +659,7 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
 
   return {
     category: result,
+    incompatibilities,
   };
 });
 
@@ -580,15 +674,11 @@ const deleteCategory = catchAsync(async (id, query) => {
   // check if category exists - and get the category info
   const deleteNewCategory = new Category();
 
-  // delete type ["row", "tree"] -- row deletes the row and establishes the new parent for the children / tree deletes the row and its children
-  if (query.type === "row") {
+  if (query.save) {
     return deleteNewCategory.deleteValidation(id);
   }
 
-  // with type ["tree"] it will use the function deleteTree() in the Category class
-  if (query.type === "tree") {
-    return deleteNewCategory.deleteTree(false, id);
-  }
+  return deleteNewCategory.deleteTree(false, id);
 });
 
 module.exports = {

@@ -19,6 +19,9 @@ const createCategory = {
     })
     .required()
     .label("Category Image"),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save resources"),
+  }),
 };
 
 const updateCategory = {
@@ -27,7 +30,7 @@ const updateCategory = {
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
       .label("Category Id"),
-    // parentId: Joi.string().label("Parent Id"),
+    parentId: Joi.string().label("Parent Id"),
     name: Joi.string().label("Category Name"),
     description: Joi.string().label("Category Description"),
   }),
@@ -41,6 +44,9 @@ const updateCategory = {
       size: Joi.number(),
     })
     .label("Category Image"),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save resources"),
+  }),
 };
 
 const deleteCategory = {
@@ -51,7 +57,7 @@ const deleteCategory = {
       .label("Category Id"),
   }),
   query: Joi.object().keys({
-    type: Joi.string().required().valid("row", "tree").label("Deletion Type"),
+    save: Joi.boolean().default(true).label("Save resources"),
   }),
 };
 

@@ -16,7 +16,7 @@ const { categoryService } = require("../services");
 const createCategory = catchAsync(async (req, res) => {
   const { name, parentId = null, description = null } = req.body;
 
-  const result = await categoryService.createCategory(name, parentId, description, req.file);
+  const result = await categoryService.createCategory(name, parentId, description, req.file, req.query);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
@@ -34,7 +34,7 @@ const createCategory = catchAsync(async (req, res) => {
  * @returns { JSON }
  */
 const updateCategory = catchAsync(async (req, res) => {
-  const result = await categoryService.updateCategory(req.body, req.file);
+  const result = await categoryService.updateCategory(req.body, req.file, req.query);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
