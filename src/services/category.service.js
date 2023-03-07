@@ -5,7 +5,7 @@ const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
 const { prismaProducts } = require("../config/db");
 const parser = require("../utils/parser");
-const { uploadImage } = require("../utils/cloudinary");
+const { uploadImage, deleteImage } = require("../utils/cloudinary");
 
 class Category {
   constructor(categoryName, parentId = null) {
@@ -157,6 +157,44 @@ class Category {
     return count[0].image;
   }
 
+  async deleteImageCategory(prisma) {
+    // check if category image repeats in db
+    const count = await prisma.$queryRaw`
+      SELECT a.image,
+      (
+        SELECT COUNT(*)::int FROM
+        (
+          SELECT * FROM product_category AS c
+          WHERE
+            CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
+            / 32 = 1 THEN true ELSE false END
+          LIMIT 2
+        ) AS b
+      )
+      FROM product_category AS a
+      LIMIT 1
+    `;
+    // [{ image: "string", count: 1 }] eg
+
+    // delete image from cloudinary
+    if (count[0].count === 1) {
+      await deleteImage(count[0].image);
+    }
+
+    return prisma.product_category.delete({
+      where: {
+        id: this.categoryId,
+      },
+      select: {
+        id: true,
+        parent_id: true,
+        name: true,
+        image: true,
+        description: true,
+      },
+    });
+  }
+
   // eslint-disable-next-line class-methods-use-this
   async updateProductsVariations(prisma, { allProducts, allVariations }) {
     let updateAllProducts;
@@ -230,18 +268,7 @@ class Category {
       const updateProducts = updateAllProducts;
       const updateVariations = updateAllVariations;
 
-      const deletedCategory = await prisma.product_category.delete({
-        where: {
-          id: this.categoryId,
-        },
-        select: {
-          id: true,
-          parent_id: true,
-          name: true,
-          image: true,
-          description: true,
-        },
-      });
+      const deletedCategory = await this.deleteImageCategory(prisma);
 
       return {
         category: deletedCategory,
@@ -283,18 +310,7 @@ class Category {
         `;
       }
 
-      const deletedCategory = await prisma.product_category.delete({
-        where: {
-          id: this.categoryId,
-        },
-        select: {
-          id: true,
-          parent_id: true,
-          name: true,
-          image: true,
-          description: true,
-        },
-      });
+      const deletedCategory = await this.deleteImageCategory(prisma);
 
       return {
         category: deletedCategory,
@@ -305,10 +321,12 @@ class Category {
     return updateCategoriesTransaction;
   }
 
-  async deleteTree(lastLayer = null) {
+  async deleteTree(lastLayer, categoryId = null) {
     const deleteCategoriesTransaction = await prismaProducts.$transaction(async (prisma) => {
       let treeIds = [this.categoryId];
       if (!lastLayer) {
+        await this.validateParent(categoryId, null);
+
         // get the tree structure
         treeIds = await prisma.$queryRaw`
           WITH RECURSIVE category_data AS (
@@ -336,51 +354,65 @@ class Category {
 
       // delete the tree - not optimal
       // https://stackoverflow.com/questions/61756075/postgres-variable-for-multiple-delete-statements check tomorrow
-      const productConfigurations = await prisma.$queryRaw`
-        DELETE FROM product_configuration AS a
-        WHERE a.product_item_id IN (
-          SELECT b.id
-          FROM product_item AS b
-          WHERE b.product_id IN (
-            SELECT c.id
-            FROM product AS c
-            WHERE category_id IN (${Prisma.join(treeIds)})
+      let productConfigurations;
+      let productItems;
+      let products;
+      let variationOptions;
+      let variations;
+
+      let productIds = await prisma.$queryRaw`
+        SELECT c.id
+        FROM product AS c
+        WHERE c.category_id IN (${Prisma.join(treeIds)})
+      `;
+
+      if (productIds.length > 0) {
+        productIds = productIds.map((obj) => obj.id);
+
+        productConfigurations = await prisma.$queryRaw`
+          DELETE FROM product_configuration AS a
+          WHERE a.product_item_id IN (
+            SELECT b.id
+            FROM product_item AS b
+            WHERE b.product_id IN (${Prisma.join(productIds)})
           )
-        )
-        RETURNING a.id, a.product_item_id, a.variation_option_id
+          RETURNING a.id, a.product_item_id, a.variation_option_id
+        `;
+
+        productItems = await prisma.$queryRaw`
+          DELETE FROM product_item AS d
+          WHERE d.product_id IN (${Prisma.join(productIds)})
+          RETURNING d.id, d.product_id, d."SKU", d."QIS", d.images, d.price
+        `;
+
+        products = await prisma.$queryRaw`
+          DELETE FROM product AS e
+          WHERE e.id IN (${Prisma.join(productIds)})
+          RETURNING e.id, e.category_id, e.name, e.description, e.image
+        `;
+      }
+
+      let variationIds = await prisma.$queryRaw`
+        SELECT f.id
+        FROM variation AS f
+        WHERE f.category_id IN (${Prisma.join(treeIds)})
       `;
 
-      const productItems = await prisma.$queryRaw`
-        DELETE FROM product_item AS d
-        WHERE d.product_id IN (
-          SELECT c.id
-          FROM product AS c
-          WHERE category_id IN (${Prisma.join(treeIds)})
-        )
-        RETURNING d.id, d.product_id, d."SKU", d."QIS", d.images, d.price
-      `;
+      if (variationIds.length > 0) {
+        variationIds = variationIds.map((obj) => obj.id);
 
-      const products = await prisma.$queryRaw`
-        DELETE FROM product AS e
-        WHERE e.category_id IN (${Prisma.join(treeIds)})
-        RETURNING e.id, e.category_id, e.name, e.description, e.image
-      `;
+        variationOptions = await prisma.$queryRaw`
+          DELETE FROM variation_option AS f
+          WHERE f.variation_id IN (${Prisma.join(variationIds)})
+          RETURNING f.id, f.variation_id, f.value
+        `;
 
-      const variationOptions = await prisma.$queryRaw`
-        DELETE FROM variation_option AS f
-        WHERE f.variation_id IN (
-          SELECT g.id
-          FROM variation AS g
-          WHERE category_id IN (${Prisma.join(treeIds)})
-        )
-        RETURNING f.id, f.variation_id, f.value
-      `;
-
-      const variations = await prisma.$queryRaw`
-        DELETE FROM variation AS h
-        WHERE h.category_id IN (${Prisma.join(treeIds)})
-        RETURNING h.id, h.category_id, h.name
-      `;
+        variations = await prisma.$queryRaw`
+          DELETE FROM variation AS h
+          WHERE h.id IN (${Prisma.join(variationIds)})
+          RETURNING h.id, h.category_id, h.name
+        `;
+      }
 
       const categories = await prisma.$queryRaw`
         DELETE FROM product_category AS i
@@ -423,6 +455,11 @@ class Category {
     }
 
     // has resources
+    // check for parent id
+    if (!this.parentId) {
+      return this.deleteTree(true);
+    }
+
     if (resources.length > 0) {
       // check for siblings
       const siblings = await prismaProducts.$queryRaw`
@@ -548,28 +585,10 @@ const deleteCategory = catchAsync(async (id, query) => {
     return deleteNewCategory.deleteValidation(id);
   }
 
+  // with type ["tree"] it will use the function deleteTree() in the Category class
   if (query.type === "tree") {
-    return deleteNewCategory.deleteTree();
+    return deleteNewCategory.deleteTree(false, id);
   }
-  // with type ["tree"] it will use the function deleteTransaction() in the Category class
-
-  // still need to check if the image can be deleted or not, and if yes, delete it
-
-  // const category = await prismaProducts.$queryRaw`
-  //   SELECT a.*,
-  //   (
-  //     SELECT COUNT(*)::int FROM
-  //     (
-  //       SELECT * FROM product_category AS c
-  //       WHERE
-  //         CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
-  //         / CHAR_LENGTH(SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31 ))) = 1 THEN true ELSE false END
-  //       LIMIT 2
-  //     ) AS b
-  //   )
-  //   FROM product_category AS a
-  //   WHERE id = ${id}
-  // `;
 });
 
 module.exports = {

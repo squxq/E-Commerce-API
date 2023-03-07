@@ -20,6 +20,8 @@ model product_category {
   other_product_category product_category[] @relation("product_categoryToproduct_category")
   products               product[]
   variation              variation[]
+
+  @@unique([parent_id, name])
 }
 
 model product {
