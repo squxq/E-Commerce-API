@@ -241,73 +241,85 @@ class Category {
     };
   }
 
-  async updateResources(reverse = false, childId = null) {
+  async updateResources(reverse = false, childId = null, newParentId = null) {
     if (!reverse && !childId)
       throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong when updating resources");
 
-    const updateResourcesTransaction = await prismaProducts.$transaction(async (prisma) => {
-      const allProducts = await prisma.product.findMany({
-        where: {
-          category_id: this.categoryId,
-        },
-        select: {
-          id: true,
-        },
+    const updateResourcesTransaction = await prismaProducts
+      .$transaction(async (prisma) => {
+        const allProducts = await prisma.product.findMany({
+          where: {
+            category_id: newParentId || this.categoryId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        const allVariations = await prisma.variation.findMany({
+          where: {
+            category_id: newParentId || this.categoryId,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        const { updateAllProducts, updateAllVariations } = await this.updateProductsVariations(
+          prisma,
+          {
+            allProducts,
+            allVariations,
+          },
+          reverse,
+          childId
+        );
+
+        let deletedCategory;
+
+        if (!reverse) {
+          deletedCategory = await this.deleteImageCategory(prisma);
+        }
+
+        return {
+          category: deletedCategory,
+          products: updateAllProducts,
+          variations: updateAllVariations,
+        };
+      })
+      .catch((err) => {
+        if (err.meta.code === "23505") {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            `Resources cant be saved. Change: save=false or change resources data: ${err.meta.message}`
+          );
+        }
+
+        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}`);
       });
-
-      const allVariations = await prisma.variation.findMany({
-        where: {
-          category_id: this.categoryId,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      const { updateAllProducts, updateAllVariations } = await this.updateProductsVariations(
-        prisma,
-        {
-          allProducts,
-          allVariations,
-        },
-        reverse,
-        childId
-      );
-
-      let deletedCategory;
-
-      if (!reverse) {
-        deletedCategory = await this.deleteImageCategory(prisma);
-      }
-
-      return {
-        category: deletedCategory,
-        products: updateAllProducts,
-        variations: updateAllVariations,
-      };
-    });
 
     return updateResourcesTransaction;
   }
 
   // eslint-disable-next-line class-methods-use-this
   async updateCategories() {
-    const updateCategoriesTransaction = await prismaProducts.$transaction(async (prisma) => {
-      let allChildren = await prisma.product_category.findMany({
-        where: {
-          parent_id: this.categoryId,
-        },
-        select: {
-          id: true,
-        },
-      });
+    const updateCategoriesTransaction = await prismaProducts
+      .$transaction(async (prisma) => {
+        let allChildren = await prisma.product_category.findMany({
+          where: {
+            parent_id: this.categoryId,
+          },
+          select: {
+            id: true,
+          },
+        });
 
-      allChildren = allChildren.map((child) => [child.id]);
+        allChildren = allChildren.map((child) => [child.id]);
 
-      let updateAllChildren;
+        let updateAllChildren;
 
-      if (allChildren.length > 0) {
-        updateAllChildren = await prisma.$queryRaw`
+        if (allChildren.length > 0) {
+          updateAllChildren = await prisma.$queryRaw`
           UPDATE product_category AS a
           SET parent_id = ${this.parentId}
           FROM
@@ -318,15 +330,25 @@ class Category {
           WHERE b.id = a.id
           RETURNING a.id, a.parent_id, a.name, a.image, a.description
         `;
-      }
+        }
 
-      const deletedCategory = await this.deleteImageCategory(prisma);
+        const deletedCategory = await this.deleteImageCategory(prisma);
 
-      return {
-        category: deletedCategory,
-        categories: updateAllChildren,
-      };
-    });
+        return {
+          category: deletedCategory,
+          categories: updateAllChildren,
+        };
+      })
+      .catch((err) => {
+        if (err.meta.code === "23505") {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            `Resources cant be saved. Change: save=false or change resources data: ${err.meta.message}`
+          );
+        }
+
+        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}`);
+      });
 
     return updateCategoriesTransaction;
   }
@@ -473,14 +495,14 @@ class Category {
         (
           SELECT a.id
           FROM product AS a
-          WHERE a.category_id = ${!parentId ? this.categoryId : parentId}
+          WHERE a.category_id = ${parentId || this.parentId}
           LIMIT 1
         )
       UNION ALL
         (
           SELECT b.id
           FROM variation AS b
-          WHERE b.category_id = ${!parentId ? this.categoryId : parentId}
+          WHERE b.category_id = ${parentId || this.parentId}
           LIMIT 1
         )
       ) AS c
@@ -535,10 +557,10 @@ class Category {
   }
 
   // create and update incompatibilities - creates on top of existing resources / moves to category with existing resources
-  async checkIncompatibilities(save, childId, parentId = null) {
+  async checkIncompatibilities(save, childId, newParentId = null) {
     // check for existing reources
-    if (parentId) this.categoryId = parentId;
-    const resources = await this.checkResources(this.categoryId);
+    // if (parentId) this.categoryId = parentId;
+    const resources = await this.checkResources(newParentId);
 
     // has resources
     if (resources.length !== 0) {
@@ -548,7 +570,7 @@ class Category {
       }
 
       // if user wants to maintain resources
-      return this.updateResources(true, childId);
+      return this.updateResources(true, childId, newParentId);
     }
   }
 }
@@ -635,14 +657,18 @@ const updateCategory = catchAsync(async (data, imageUpdate, query) => {
   }
 
   // not working
-  // let incompatibilities;
-  // if (data.parentId) {
-  //   incompatibilities = await updateNewCategory.checkIncompatibilities(query.save, categoryId, data.parentId);
-  //   // eslint-disable-next-line no-param-reassign
-  //   data.parent_id = data.parentId;
-  //   // eslint-disable-next-line no-param-reassign
-  //   delete data.parentId;
-  // }
+  let incompatibilities;
+  if (data.parentId) {
+    if (data.parentId === categoryId) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "A category cannot be the parent of itself");
+    }
+
+    incompatibilities = await updateNewCategory.checkIncompatibilities(query.save, categoryId, data.parentId);
+    // eslint-disable-next-line no-param-reassign
+    data.parent_id = data.parentId;
+    // eslint-disable-next-line no-param-reassign
+    delete data.parentId;
+  }
 
   const result = await prismaProducts.product_category.update({
     where: {
