@@ -34,9 +34,6 @@ const deleteVariation = {
   }),
   query: Joi.object().keys({
     save: Joi.boolean().default(true).label("Save Products"),
-    variation: Joi.string()
-      .label("Replacement Variation Id")
-      .guid({ version: ["uuidv4", "uuidv5"] }),
   }),
 };
 

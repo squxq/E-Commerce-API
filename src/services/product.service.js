@@ -143,38 +143,41 @@ class CreateProductItem {
       })
     );
 
-    return [sku, orderedOptions];
+    return { sku, orderedOptions };
   }
 
   // createItemTransaction
   async createProductItemTransaction(productId, sku, orderedOptions, imagesArray, formattedPrice, prisma) {
     const variationsPromises = Object.entries(orderedOptions).map(async ([key, value]) => {
       return prisma.$queryRaw`
-          SELECT b.id
-          FROM variation AS a
-          JOIN variation_option AS b
-          ON a.name = ${key} AND b.value = ${value}
-          WHERE category_id = ${this.categoryId}
+          SELECT a.id
+          FROM variation_option AS a
+          LEFT JOIN variation AS b
+          ON b.id = a.variation_id
+          WHERE b.name = ${key} AND a.value = ${value}
         `;
     });
 
     let variationsIds = await Promise.all(variationsPromises);
-    variationsIds = variationsIds.map((variationId) => variationId[0].id).sort();
+    variationsIds = variationsIds.map((varArr) => varArr[0].id).sort();
 
-    let configurationIds = await prisma.$queryRaw`
-      SELECT array_agg(b.variation_option_id) AS variation_ids
-      FROM product_item AS a
-      LEFT JOIN product_configuration AS b
-      ON b.product_item_id = a.id
-      WHERE a.product_id = ${productId}
-      GROUP BY a.id
+    let otherConfigurations = await prisma.$queryRaw`
+      SELECT array_agg(a.variation_option_id) AS config
+      FROM product_configuration AS a
+      WHERE a.product_item_id IN (
+        SELECT b.id
+        FROM product_item AS b
+        WHERE b.product_id = '505ed5d9-6f8c-431a-9304-cf41418aea2d'
+      )
+      GROUP BY a.product_item_id
     `;
 
-    configurationIds = configurationIds.map((obj) => obj.variation_ids.sort());
+    otherConfigurations = otherConfigurations.map((obj) => obj.config.sort());
 
-    configurationIds.forEach((arr) => {
-      if (arr.join(",") === variationsIds.join(","))
+    otherConfigurations.forEach((configuration) => {
+      if (configuration.join(",") === variationsIds.join(",")) {
         throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
+      }
     });
 
     const createProductItem = await prisma.product_item.create({
@@ -306,24 +309,32 @@ const createProduct = catchAsync(async (data, images) => {
   imagesArray.pop();
 
   // SKU - generation === categoryName + productName + productVariationOptions
-  const [sku, orderedOptions] = createNewProductItem.generateSKU(categoryName, name);
+  const { sku, orderedOptions } = createNewProductItem.generateSKU(categoryName, name);
 
   const createProductTransaction = await prismaProducts.$transaction(async (prisma) => {
-    const createNewProduct = await prisma.product.create({
-      data: {
-        category_id: categoryId,
-        name,
-        description,
-        image: mainPublicId,
-      },
-      select: {
-        id: true,
-        category_id: true,
-        name: true,
-        description: true,
-        image: true,
-      },
-    });
+    const createNewProduct = await prisma.product
+      .create({
+        data: {
+          category_id: categoryId,
+          name,
+          description,
+          image: mainPublicId,
+        },
+        select: {
+          id: true,
+          category_id: true,
+          name: true,
+          description: true,
+          image: true,
+        },
+      })
+      .catch((err) => {
+        if (err.code === "P2002" && ["category_id", "name"].every((element) => err.meta.target.includes(element))) {
+          throw new ApiError(httpStatus.BAD_REQUEST, "A product with this name already exists");
+        }
+
+        throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err.message, false);
+      });
 
     const [createProductItem, createProductConfiguration] = await createNewProductItem.createProductItemTransaction(
       createNewProduct.id,
@@ -379,7 +390,7 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
   imagesArray.pop();
 
   // SKU - generation === categoryName + productName + productVariationOptions
-  const [sku, orderedOptions] = createNewProductItem.generateSKU(categoryName, productName);
+  const { sku, orderedOptions } = createNewProductItem.generateSKU(categoryName, productName);
 
   // create productItemTransaction
   const createProductItemTransaction = await prismaProducts.$transaction(async (prisma) => {

@@ -135,16 +135,14 @@ class Variation {
   async checkResources() {
     const resources = await prismaProducts.$queryRaw`
       WITH variation_option_ids AS (
-        SELECT b.id
-        FROM variation AS a
-        LEFT JOIN variation_option AS b
-        ON b.variation_id = a.id
-        WHERE a.id = ${this.variationId}
+        SELECT a.id
+        FROM variation_option AS a
+        WHERE a.variation_id = ${this.variationId}
       )
 
       SELECT array_agg(c.product_item_id) AS resources_ids
       FROM product_configuration AS c
-      WHERE c.variation_option_id IN (SELECT * FROM variation_option_ids)
+      WHERE c.variation_option_id IN (SELECT id FROM variation_option_ids)
 
       UNION ALL
 
@@ -181,8 +179,21 @@ class Variation {
     return deleteVariationTransaction;
   }
 
-  async deleteProducts(productItemIds, variationOptionIds, save = null) {
+  async deleteProducts(variationOptionIds, save = null) {
     const toDeleteProducts = [];
+
+    let productItemIds = await prismaProducts.$queryRaw`
+      SELECT product_item_id AS id
+      FROM product_configuration
+      WHERE product_item_id IN (
+        SELECT c.product_item_id
+        FROM product_configuration AS c
+        WHERE c.variation_option_id IN (${Prisma.join(variationOptionIds)})
+      )
+    `;
+
+    productItemIds = productItemIds.map((productItem) => productItem.id);
+
     for (let index = 0; index < productItemIds.length; index += 1) {
       if (productItemIds.indexOf(productItemIds[index], productItemIds.indexOf(productItemIds[index]) + 1) === -1) {
         toDeleteProducts.push(productItemIds[index]);
@@ -223,42 +234,14 @@ class Variation {
           RETURNING id, product_id, "SKU", "QIS", images, price
         `;
 
-        const productIds = Array.from(new Set(productItems.map((item) => item.product_id)));
-
-        // const deleteProductsFunction = await prisma.$queryRaw`
-        //   CREATE OR REPLACE FUNCTION product_can_del(_id TEXT)
-        //     RETURNS RECORD AS
-        //   $func$
-        //   DECLARE
-        //     _ct int;
-        //     results RECORD;
-        //     -- to receive count of deleted rows
-        //   BEGIN
-        //     EXECUTE format('DELETE FROM product WHERE id = $1 RETURNING id, category_id, name, description, image')
-        //         USING _id INTO results;                         -- exception if other rows depend
-
-        //     GET DIAGNOSTICS _ct = ROW_COUNT;
-
-        //     IF _ct = 0 THEN
-        //         RETURN NULL;                       -- ID not found, return NULL
-        //     END IF;
-
-        //     RETURN results;
-
-        //     EXCEPTION
-        //     WHEN FOREIGN_KEY_VIOLATION THEN
-        //         RETURN NULL;
-        //   END
-        //   $func$ LANGUAGE plpgsql;
-        // `;
-
-        const deleteProducts = productIds.map(async (id) => {
-          const result = await prisma.$queryRaw`
-            SELECT ${Prisma.sql`product_can_del('${id}')`}
-          `;
-
-          return result;
-        });
+        const deleteProducts = await prisma.$queryRaw`
+          DELETE FROM product AS a
+          WHERE NOT EXISTS (
+            SELECT FROM product_item AS b
+            WHERE b.product_id = a.id
+          )
+          RETURNING id, category_id, name, description, image
+        `;
 
         return {
           productConfigurations,
@@ -267,7 +250,12 @@ class Variation {
         };
       });
 
-      return deleteProductTree;
+      const variationTransaction = await this.deleteVariation(variationOptionIds);
+
+      return {
+        ...variationTransaction,
+        ...deleteProductTree,
+      };
     }
 
     throw new ApiError(
@@ -291,7 +279,7 @@ class Variation {
 
     // delete products if the only variation is the one to be deleted
     // check for other variations besides the one to be deleted
-    return this.deleteProducts(resources[0].resources_ids, resources[1].resources_ids, save);
+    return this.deleteProducts(resources[1].resources_ids, save);
   }
 }
 
@@ -380,11 +368,7 @@ const updateVariation = catchAsync(async (data) => {
 const deleteVariation = catchAsync(async (variationId, query) => {
   const deleteNewVariation = new Variation();
 
-  // if (query.save) {
   return deleteNewVariation.deleteValidation(variationId, query.save);
-  // }
-
-  // return deleteNewVariation.deleteAll(variationId);
 });
 
 /**
