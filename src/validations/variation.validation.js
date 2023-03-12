@@ -21,7 +21,12 @@ const updateVariation = {
       .label("Variation Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
     name: Joi.string().label("Name"),
-    // categoryId: Joi.string().label("Category Id"),
+    categoryId: Joi.string()
+      .label("Category Id")
+      .guid({ version: ["uuidv4", "uuidv5"] }),
+  }),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save Products"),
   }),
 };
 
@@ -61,22 +66,20 @@ const updateVariationOption = {
       .guid({ version: ["uuidv4", "uuidv5"] }),
     value: Joi.string().label("New option value"),
   }),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save Products"),
+  }),
 };
 
 const deleteVariationOptions = {
-  body: Joi.object().keys({
-    ids: Joi.array()
-      .items(
-        Joi.string()
-          .required()
-          .label("Variation Option Id")
-          .guid({ version: ["uuidv4", "uuidv5"] }),
-        Joi.string()
-          .label("Variation Option Id")
-          .guid({ version: ["uuidv4", "uuidv5"] })
-      )
+  params: Joi.object().keys({
+    optionId: Joi.string()
       .required()
-      .label("Variation Option Ids"),
+      .label("Option Id")
+      .guid({ version: ["uuidv4", "uuidv5"] }),
+  }),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save Products"),
   }),
 };
 

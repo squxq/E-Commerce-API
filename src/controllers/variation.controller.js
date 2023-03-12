@@ -29,12 +29,13 @@ const createVariation = catchAsync(async (req, res) => {
  * @param { Object } req
  * @param { Object } res
  * @property { String } req.body.variationId
- * @property { String } req.body.name
  * @property { String } req.body.categoryId
+ * @property { String } req.body.name
+ * @property { String } req.query.save
  * @returns { JSON }
  */
 const updateVariation = catchAsync(async (req, res) => {
-  const result = await variationService.updateVariation(req.body);
+  const result = await variationService.updateVariation(req.body, req.query.save);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
@@ -83,35 +84,39 @@ const createVariationOptions = catchAsync(async (req, res) => {
 });
 
 /**
- * @desc Update variation option(s)
+ * @desc Update variation option
  * @param { Object } req
  * @param { Object } res
- * @property { Object } req.body
+ * @property { String } req.body.optionId
+ * @property { String } req.body.value
+ * @property { Boolean } req.query.save
  * @returns { JSON }
  */
 const updateVariationOption = catchAsync(async (req, res) => {
-  const result = await variationService.updateVariationOption(req.body);
+  const result = await variationService.updateVariationOption(req.body, req.query.save);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: ["Variation option successfully updated"],
+    message: "Variation option successfully updated",
     output: result,
   });
 });
 
 /**
- * @desc Delete variation option(s)
+ * @desc Delete variation option
  * @param { Object } req
  * @param { Object } res
- * @property { Array } req.body.ids
+ * @property { String } req.params.optionId
+ * @property { Boolean } res.query.save
  * @returns { JSON }
  */
 const deleteVariationOptions = catchAsync(async (req, res) => {
-  await variationService.deleteVariationOptions(req.body.ids);
+  const result = await variationService.deleteVariationOption(req.params.optionId, req.query.save);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: ["Variation option(s) successfully deleted"],
+    message: "Variation option successfully deleted",
+    output: result,
   });
 });
 

@@ -19,8 +19,8 @@ router.patch(
   validate(variationValidation.updateVariationOption),
   variationController.updateVariationOption
 );
-router.patch(
-  "/delete/option",
+router.delete(
+  "/delete/option/:optionId",
   validate(variationValidation.deleteVariationOptions),
   variationController.deleteVariationOptions
 );

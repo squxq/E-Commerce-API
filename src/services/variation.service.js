@@ -12,7 +12,7 @@ class Variation {
   }
 
   // check if the category is valid
-  async checkCategory() {
+  async checkCategory(id = null, name = null, save = null) {
     const checkCategoryQuery = await prismaProducts.$queryRaw`
       SELECT *
       FROM (
@@ -30,7 +30,7 @@ class Variation {
         FROM product_category AS c
         LEFT JOIN variation AS d
         ON d.category_id = c.id
-        WHERE c.id = ${this.categoryId}
+        WHERE c.id = ${id || this.categoryId}
         GROUP BY c.id
       ) AS f
       ON TRUE
@@ -38,11 +38,22 @@ class Variation {
 
     if (!checkCategoryQuery[0].category_id) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
 
-    if (!checkCategoryQuery[0].ids.includes(this.categoryId))
+    if (!checkCategoryQuery[0].ids.includes(id || this.categoryId))
       throw new ApiError(httpStatus.BAD_REQUEST, "Category is not valid");
 
-    if (checkCategoryQuery[0].names.includes(this.name))
-      throw new ApiError(httpStatus.BAD_REQUEST, "Variation name is already in use");
+    if (checkCategoryQuery[0].names.includes(name || this.name)) {
+      if (save || !name)
+        throw new ApiError(httpStatus.BAD_REQUEST, `Variation name (${name || this.name}) is already in use`);
+      // if save is false we want to find the existing variation that has the same name and the same category id to then delete it
+      const toDeleteVariation = await prismaProducts.$queryRaw`
+        SELECT id
+        FROM variation
+        WHERE category_id = ${id} AND name = ${name}
+      `;
+
+      // delete the variation
+      return this.deleteValidation(toDeleteVariation[0].id, save);
+    }
   }
 
   // check if value(s) is/are valid
@@ -74,6 +85,7 @@ class Variation {
       INSERT INTO "variation_option" ("id", "variation_id", "value", "updatedAt")
       VALUES ${Prisma.join(
         valuesParams.map((row) => {
+          // eslint-disable-next-line no-param-reassign
           row[row.length - 1] = Prisma.sql`to_timestamp(${row[row.length - 1]} / 1000.0)`;
           return Prisma.sql`(${Prisma.join(row)})`;
         })
@@ -133,27 +145,37 @@ class Variation {
 
   // check for existing resources - variation_options
   async checkResources() {
-    const resources = await prismaProducts.$queryRaw`
-      WITH variation_option_ids AS (
-        SELECT a.id
-        FROM variation_option AS a
-        WHERE a.variation_id = ${this.variationId}
-      )
+    let resources;
+    if (this.optionId) {
+      resources = await prismaProducts.$queryRaw`
+        SELECT array_agg(c.product_item_id) AS resources_ids
+        FROM product_configuration AS c
+        WHERE c.variation_option_id = ${this.optionId}
+      `;
+    } else {
+      resources = await prismaProducts.$queryRaw`
+        WITH variation_option_ids AS (
+          SELECT a.id
+          FROM variation_option AS a
+          WHERE a.variation_id = ${this.variationId}
+        )
 
-      SELECT array_agg(c.product_item_id) AS resources_ids
-      FROM product_configuration AS c
-      WHERE c.variation_option_id IN (SELECT id FROM variation_option_ids)
+        SELECT array_agg(c.product_item_id) AS resources_ids
+        FROM product_configuration AS c
+        WHERE c.variation_option_id IN (SELECT id FROM variation_option_ids)
 
-      UNION ALL
+        UNION ALL
 
-      SELECT array_agg(d.id)
-      FROM variation_option_ids AS d
-    `;
+        SELECT array_agg(d.id)
+        FROM variation_option_ids AS d
+      `;
+    }
 
     return resources;
   }
 
   async deleteVariation(variationOptionIds) {
+    let deletedVariation;
     const deleteVariationTransaction = await prismaProducts.$transaction(async (prisma) => {
       const deletedVariationOptions = await prisma.$queryRaw`
         DELETE FROM variation_option
@@ -161,14 +183,16 @@ class Variation {
         RETURNING id, variation_id, value
       `;
 
-      const deletedVariation = await prisma.variation.delete({
-        where: { id: this.variationId },
-        select: {
-          id: true,
-          category_id: true,
-          name: true,
-        },
-      });
+      if (!this.optionId) {
+        deletedVariation = await prisma.variation.delete({
+          where: { id: this.variationId },
+          select: {
+            id: true,
+            category_id: true,
+            name: true,
+          },
+        });
+      }
 
       return {
         variation: deletedVariation,
@@ -212,8 +236,10 @@ class Variation {
       `;
 
       return {
-        productConfigurations: deleteProductConfigurations,
         ...this.deleteVariation(variationOptionIds),
+        incompatibilities: {
+          productConfigurations: deleteProductConfigurations,
+        },
       };
     }
 
@@ -250,11 +276,9 @@ class Variation {
         };
       });
 
-      const variationTransaction = await this.deleteVariation(variationOptionIds);
-
       return {
-        ...variationTransaction,
-        ...deleteProductTree,
+        ...this.deleteVariation(variationOptionIds),
+        incompatibilities: deleteProductTree,
       };
     }
 
@@ -264,22 +288,46 @@ class Variation {
     );
   }
 
+  async validateOption(optionId) {
+    const option = await prismaProducts.$queryRaw`
+      SELECT b.id
+      FROM variation_option AS a
+      LEFT JOIN variation AS b
+      ON a.variation_id = b.id
+      WHERE a.id = ${optionId}
+    `;
+
+    if (!option) throw new ApiError(httpStatus.NOT_FOUND, "Variation option not found");
+
+    this.optionId = optionId;
+
+    return option[0].id;
+  }
+
   // delete validation
-  async deleteValidation(variationId, save) {
-    // validate variation
-    await this.validateVariation(variationId);
+  async deleteValidation(variationId, save, optionId) {
+    if (!variationId && !optionId)
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong please try again", false);
+
+    if (variationId) {
+      // validate variation
+      await this.validateVariation(variationId);
+    } else if (optionId) {
+      // validate option and find its variation
+      await this.validateOption(optionId);
+    }
 
     // check for products connected to this variation
     const resources = await this.checkResources();
 
     if (!resources[0].resources_ids) {
       // return delete variation and variation_options
-      return this.deleteVariation(resources[1].resources_ids);
+      return this.deleteVariation(this.optionId ? [this.optionId] : resources[1].resources_ids);
     }
 
     // delete products if the only variation is the one to be deleted
     // check for other variations besides the one to be deleted
-    return this.deleteProducts(resources[1].resources_ids, save);
+    return this.deleteProducts(this.optionId ? [this.optionId] : resources[1].resources_ids, save);
   }
 }
 
@@ -329,12 +377,14 @@ const createVariation = catchAsync(async (categoryId, name, value, values) => {
 /**
  * @desc Update existing Variation
  * @param { Object } data
+ * @param { Boolean } save
  * @returns { Object }
  */
-const updateVariation = catchAsync(async (data) => {
+const updateVariation = catchAsync(async (data, save) => {
   const updateNewVariation = new Variation();
 
   const { variationId } = data;
+  // eslint-disable-next-line no-param-reassign
   delete data.variationId;
 
   // validate data to update
@@ -343,7 +393,18 @@ const updateVariation = catchAsync(async (data) => {
   // validate variationId and name if is provided
   const { variationName: name } = await updateNewVariation.validateVariation(variationId, data.name);
 
+  // eslint-disable-next-line no-param-reassign
   data.name = name;
+
+  let incompatibilities;
+  if (data.categoryId) {
+    incompatibilities = await updateNewVariation.checkCategory(data.categoryId, data.name, save);
+
+    // eslint-disable-next-line no-param-reassign
+    data.category_id = data.categoryId;
+    // eslint-disable-next-line no-param-reassign
+    delete data.categoryId;
+  }
 
   const variation = await prismaProducts.variation.update({
     where: {
@@ -357,7 +418,10 @@ const updateVariation = catchAsync(async (data) => {
     },
   });
 
-  return variation;
+  return {
+    variation,
+    incompatibilities,
+  };
 });
 
 /**
@@ -376,80 +440,125 @@ const deleteVariation = catchAsync(async (variationId, query) => {
  * @param { String } variationId
  * @param { String } value
  * @param { Array } values
- * @returns { Array }
+ * @returns { Object }
  */
 const createVariationOptions = catchAsync(async (variationId, value, values) => {
   const createNewVariationOptions = new Variation(null);
 
+  // check for the values provided
   createNewVariationOptions.checkValues(value, values);
+
+  // check for existing values
   await createNewVariationOptions.checkDuplicateValues(variationId);
 
-  const variationOptionsTransaction = await prismaProducts.$transaction(async (prisma) => {
-    // get variationId
-    const variation = await prisma.variation.findUnique({
-      where: {
-        id: variationId,
-      },
-      select: { id: true },
-    });
+  // create the new variation options
+  const variationOptions = await createNewVariationOptions.variationOptionsTransaction(prismaProducts, variationId);
 
-    const variationOptions = await createNewVariationOptions.variationOptionsTransaction(prisma, variation.id);
-
-    return {
-      [variationOptions.length > 1 ? "variationOptions" : "variationOption"]: variationOptions,
-    };
-  });
-
-  return variationOptionsTransaction;
+  return {
+    [variationOptions.length > 1 ? "variationOptions" : "variationOption"]: variationOptions,
+  };
 });
 
 /**
  * @desc Update variation option
  * @param { Object } data
- * @returns { Object<id|variation_id|value> }
+ * @param { Boolean } save
+ * @returns { Object }
  */
-const updateVariationOption = catchAsync(async (data) => {
+const updateVariationOption = catchAsync(async (data, save) => {
+  const updateNewVariationOption = new Variation();
+
   const { optionId } = data;
-  /* eslint no-param-reassign: "error" */
+  // eslint-disable-next-line no-param-reassign
   delete data.optionId;
-  if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided to update variation");
 
-  Object.entries(data).forEach(([key, value]) => {
-    const newKey = key.replace(/\.?([A-Z])/g, (x, y) => `_${y.toLowerCase()}`);
-    if (newKey !== key) {
-      data[newKey] = value;
-      delete data[key];
-    }
-  });
+  // validate data to update
+  if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
 
-  const option = await prismaProducts.variation_option.update({
-    where: {
-      id: optionId,
-    },
-    data,
-    select: {
-      id: true,
-      variation_id: true,
-      value: true,
-    },
-  });
+  // check optionId
+  const variationId = await updateNewVariationOption.validateOption(optionId);
 
-  if (!option) throw new ApiError(httpStatus.NO_CONTENT, "Variation was not updated, please retry");
-  return option;
+  if (data.value) {
+    updateNewVariationOption.checkValues(data.value);
+
+    // check for existing values
+    await updateNewVariationOption.checkDuplicateValues(variationId);
+  }
+
+  // if variationId is provided
+  if (data.variationId) {
+    // eslint-disable-next-line no-param-reassign
+    data.variation_id = data.variationId;
+    // eslint-disable-next-line no-param-reassign
+    delete data.variationId;
+  }
+
+  let incompatibilities;
+  const option = await prismaProducts.variation_option
+    .update({
+      where: {
+        id: optionId,
+      },
+      data,
+      select: {
+        id: true,
+        variation_id: true,
+        value: true,
+      },
+    })
+    .catch(async (err) => {
+      // if error is a unique constraint violation we will delete the variation option and update this one to there
+      if (err.code === "P2002" && ["variation_id", "value"].every((value) => err.meta.target.includes(value))) {
+        if (save) throw new ApiError(httpStatus.BAD_REQUEST, "Variation option already exists");
+
+        // delete the variation option that is blocking this one to be updated
+        // find the variation option
+        const toDeleteVariationOption = await prismaProducts.$queryRaw`
+          SELECT id
+          FROM variation_option
+          WHERE variation_id = ${data.variation_id} AND value = (
+            SELECT value
+            FROM variation_option
+            WHERE id = ${optionId}
+          )
+        `;
+
+        incompatibilities = await updateNewVariationOption.deleteValidation(null, save, toDeleteVariationOption[0].id);
+
+        return prismaProducts.variation_option
+          .update({
+            where: { id: optionId },
+            data,
+            select: {
+              id: true,
+              variation_id: true,
+              value: true,
+            },
+          })
+          .catch((error) => {
+            throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, error.message, false);
+          });
+      }
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong please try again", false);
+    });
+
+  return {
+    variationOption: option,
+    incompatibilities,
+  };
 });
 
 /**
  * @desc Delete variation option(s)
- * @param { Array } ids
+ * @param { String } optionId
+ * @param { Boolean } save
+ * @returns { Object }
  */
-const deleteVariationOptions = catchAsync(async (ids) => {
-  await prismaProducts.$transaction(
-    ids.map((id) =>
-      prismaProducts.variation_option.delete({
-        where: { id },
-      })
-    )
-  );
+const deleteVariationOption = catchAsync(async (optionId, save) => {
+  // check if optionId has any resources attatched to it and continue the procedure from there === delete variation
+  const deleteNewVariationOption = new Variation();
+
+  return deleteNewVariationOption.deleteValidation(null, save, optionId);
 });
 
 module.exports = {
@@ -458,5 +567,5 @@ module.exports = {
   deleteVariation,
   createVariationOptions,
   updateVariationOption,
-  deleteVariationOptions,
+  deleteVariationOption,
 };
