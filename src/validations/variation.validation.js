@@ -21,7 +21,7 @@ const updateVariation = {
       .label("Variation Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
     name: Joi.string().label("Name"),
-    categoryId: Joi.string().label("Category Id"),
+    // categoryId: Joi.string().label("Category Id"),
   }),
 };
 
@@ -30,6 +30,12 @@ const deleteVariation = {
     variationId: Joi.string()
       .required()
       .label("Variation Id")
+      .guid({ version: ["uuidv4", "uuidv5"] }),
+  }),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save Products"),
+    variation: Joi.string()
+      .label("Replacement Variation Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
   }),
 };

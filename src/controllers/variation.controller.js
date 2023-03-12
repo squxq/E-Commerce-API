@@ -28,8 +28,9 @@ const createVariation = catchAsync(async (req, res) => {
  * @desc Update existing Variation Controller
  * @param { Object } req
  * @param { Object } res
- * @property { Object } req.body
  * @property { String } req.body.variationId
+ * @property { String } req.body.name
+ * @property { String } req.body.categoryId
  * @returns { JSON }
  */
 const updateVariation = catchAsync(async (req, res) => {
@@ -37,7 +38,7 @@ const updateVariation = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: ["Variation updated successfully"],
+    message: "Variation updated successfully",
     output: result,
   });
 });
@@ -47,14 +48,16 @@ const updateVariation = catchAsync(async (req, res) => {
  * @param { Object } req
  * @param { Object } res
  * @property { String } req.params.variationId
+ * @property { Object } req.query
  * @returns { JSON }
  */
 const deleteVariation = catchAsync(async (req, res) => {
-  await variationService.deleteVariation(req.params.variationId);
+  const result = await variationService.deleteVariation(req.params.variationId, req.query);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: ["Variation deleted successfully"],
+    message: "Variation deleted successfully",
+    output: result,
   });
 });
 

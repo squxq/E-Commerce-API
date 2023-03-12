@@ -159,29 +159,23 @@ class CreateProductItem {
     });
 
     let variationsIds = await Promise.all(variationsPromises);
-    variationsIds = variationsIds.map((variationId) => variationId[0].id);
+    variationsIds = variationsIds.map((variationId) => variationId[0].id).sort();
 
     let configurationIds = await prisma.$queryRaw`
-        SELECT array_agg(b.variation_option_id) AS variation_ids
-        FROM product_item AS a
-        LEFT JOIN product_configuration AS b
-        ON b.product_item_id = a.id
-        WHERE a.product_id = ${productId}
-        GROUP BY a.id
-      `;
+      SELECT array_agg(b.variation_option_id) AS variation_ids
+      FROM product_item AS a
+      LEFT JOIN product_configuration AS b
+      ON b.product_item_id = a.id
+      WHERE a.product_id = ${productId}
+      GROUP BY a.id
+    `;
 
-    configurationIds = configurationIds
-      .map((obj) => obj.variation_ids)
-      .find((arr) => {
-        const check = arr.every((id) => {
-          if (variationsIds.includes(id)) return true;
-          return false;
-        });
-        return check === true;
-      });
+    configurationIds = configurationIds.map((obj) => obj.variation_ids.sort());
 
-    if (configurationIds !== undefined)
-      throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
+    configurationIds.forEach((arr) => {
+      if (arr.join(",") === variationsIds.join(","))
+        throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
+    });
 
     const createProductItem = await prisma.product_item.create({
       data: {

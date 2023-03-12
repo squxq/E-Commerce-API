@@ -92,7 +92,7 @@ class Category {
       this.parentId = category[0].parent_id;
     }
 
-    if (categoryName) {
+    if (categoryName && categoryName !== category[0].name) {
       this.categoryName = categoryName;
       await this.validateName();
     } else {
@@ -581,6 +581,7 @@ class Category {
  * @param { String } parentId
  * @param { String } description
  * @param { Object } file
+ * @param { Object } query
  * @returns { Object }
  */
 const createCategory = catchAsync(async (categoryName, parentId, description, file, query) => {
@@ -629,7 +630,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
  * @desc Update category
  * @param { Object } data
  * @param { Object } imageUpdate
- * @param { String } data.categoryId
+ * @param { Object } query
  * @returns { Object }
  */
 const updateCategory = catchAsync(async (data, imageUpdate, query) => {
@@ -656,7 +657,6 @@ const updateCategory = catchAsync(async (data, imageUpdate, query) => {
     data.image = await updateNewCategory.validateImage(imageUpdate);
   }
 
-  // not working
   let incompatibilities;
   if (data.parentId) {
     if (data.parentId === categoryId) {
