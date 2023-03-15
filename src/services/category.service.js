@@ -108,6 +108,7 @@ class Category {
   }
 
   // check for duplicate images
+  // eslint-disable-next-line class-methods-use-this
   async validateImage(file) {
     // verify if file is empty
     if (!file) throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
@@ -136,20 +137,9 @@ class Category {
 
     if (count.length === 0) {
       // upload image to cloudinary
-      // folder name
-      if (!this.categoryName) throw new ApiError(httpStatus.BAD_REQUEST, "To up");
-
-      const formattedName = encodeURIComponent(
-        this.categoryName
-          .trim()
-          .toLowerCase()
-          .split(" ")
-          .join("_")
-          .replace(/[^a-zA-Z0-9-_]/g, "")
-      );
 
       // upload image
-      const { public_id: publicId } = await uploadImage(imageBuffer, "Category", formattedName);
+      const { public_id: publicId } = await uploadImage(imageBuffer, "Category");
 
       return publicId;
     }
@@ -665,7 +655,7 @@ const updateCategory = catchAsync(async (data, imageUpdate, query) => {
 
     incompatibilities = await updateNewCategory.checkIncompatibilities(query.save, categoryId, data.parentId);
     // eslint-disable-next-line no-param-reassign
-    data.parent_id = data.parentId;
+    data.parent_id = data.parentId !== "null" ? data.parentId : null;
     // eslint-disable-next-line no-param-reassign
     delete data.parentId;
   }

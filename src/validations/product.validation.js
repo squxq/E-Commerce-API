@@ -37,6 +37,27 @@ const createProduct = {
     .label("Images"),
 };
 
+const updateProduct = {
+  body: Joi.object().keys({
+    productId: Joi.string()
+      .required()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Id"),
+    name: Joi.string().label("Product Name"),
+    description: Joi.string().label("Product Description"),
+  }),
+  file: Joi.object()
+    .keys({
+      fieldname: Joi.string().required(),
+      originalname: Joi.string(),
+      encoding: Joi.string().required(),
+      mimetype: Joi.string().required(),
+      buffer: Joi.binary().encoding("base64").required(),
+      size: Joi.number().required(),
+    })
+    .label("Image"),
+};
+
 const createProductItem = {
   body: Joi.object().keys({
     productId: Joi.string()
@@ -74,5 +95,6 @@ const createProductItem = {
 
 module.exports = {
   createProduct,
+  updateProduct,
   createProductItem,
 };

@@ -11,13 +11,13 @@ cloudinary.v2.config({
 });
 
 // Uploads an image to cloudinary
-const uploadImage = catchAsync(async (image, folderName, fileName) => {
+const uploadImage = catchAsync(async (image, folderName, fileName = null) => {
   const etag = hash(image, { algorithm: "md5" });
   // upload options
   const options = {
     folder: `${config.cloud.project ? config.cloud.project : "default-project"}/${folderName}`,
     resource_type: "image",
-    public_id: `${fileName}_${etag}`,
+    public_id: fileName ? `${fileName}_${etag}` : etag,
     phash: true,
     use_filename: true,
     unique_filename: true,

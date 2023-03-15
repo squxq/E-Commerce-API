@@ -1,3 +1,4 @@
+const hash = require("object-hash");
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
 const { prismaProducts } = require("../config/db");
@@ -65,7 +66,7 @@ class CreateProductItem {
         return option.name === key;
       });
 
-      if (!exists) throw new ApiError(httpStatus.BAD_REQUEST, `Wrong variation option provided for: ${key}`);
+      if (!exists) throw new ApiError(httpStatus.BAD_REQUEST, `Variation ${key} does not exist`);
     });
 
     return allowedOptions[0].category_name;
@@ -228,7 +229,7 @@ class CreateProductItem {
     return product.name;
   }
 
-  async uploadImages(images, productName = null, productId = null) {
+  async uploadImages(images, productName = null, productId = null, buffer = null) {
     if (!productName) {
       if (productId) {
         // eslint-disable-next-line no-param-reassign
@@ -249,20 +250,71 @@ class CreateProductItem {
 
     const folder = `Products/${formattedName}`;
 
-    // images
-    const imagePromises = images.map(async (image) => {
-      if (image.fieldname === "main") {
-        const { public_id: publicId } = await uploadImage(parser(image).content, folder, `${formattedName}_main`);
+    // if images is an array
+    if (images) {
+      // images
+      const imagePromises = images.map(async (image) => {
+        if (image.fieldname === "main") {
+          const { public_id: publicId } = await uploadImage(parser(image).content, folder, `${formattedName}_main`);
+          return publicId;
+        }
+        const { public_id: publicId } = await uploadImage(parser(image).content, folder, formattedName);
         return publicId;
+      });
+
+      const imagesArray = await Promise.all(imagePromises);
+      imagesArray.push(productName);
+
+      return imagesArray;
+    }
+
+    // if we pass a buffer
+    const publicId = await uploadImage(buffer || parser(images).content, folder, formattedName);
+    return publicId.public_id;
+  }
+
+  // validate single image
+  async validateImage(image, productId, productName) {
+    // file is not empty because we checked it in updateProduct
+
+    // buffer
+    const { content: buffer } = parser(image);
+
+    const etag = hash(buffer, { algorithm: "md5" });
+
+    const images = await prismaProducts.$queryRaw`
+      SELECT * FROM (
+        (
+          SELECT image AS images
+          FROM product
+          WHERE id = ${productId}
+        )
+
+        UNION ALL
+
+        (
+          SELECT unnest(images)
+          FROM product_item
+          WHERE product_id = ${productId}
+        )
+      ) AS a
+    `;
+
+    let publicId = "";
+    images.every(({ images: imagePublicId }) => {
+      if (imagePublicId.substr(imagePublicId.length - 32) === etag) {
+        // eslint-disable-next-line no-param-reassign
+        publicId = imagePublicId;
+        return false;
       }
-      const { public_id: publicId } = await uploadImage(parser(image).content, folder, formattedName);
-      return publicId;
+      return true;
     });
 
-    const imagesArray = await Promise.all(imagePromises);
-    imagesArray.push(productName);
-
-    return imagesArray;
+    if (!publicId) {
+      // we have to upload the image
+      publicId = await this.uploadImages(null, productName, null, buffer);
+      return publicId;
+    }
   }
 }
 
@@ -281,13 +333,13 @@ class CreateProductItem {
 const createProduct = catchAsync(async (data, images) => {
   const { categoryId, name, description, quantity, price, options } = data;
   // instantiate CreateProductItem class
-  const createNewProductItem = new CreateProductItem(quantity, price, options, categoryId);
+  const createNewProduct = new CreateProductItem(quantity, price, options, categoryId);
 
   // check the allowed options for product configuration
-  const categoryName = await createNewProductItem.checkOptions();
+  const categoryName = await createNewProduct.checkOptions();
 
   // check and format the price
-  const formattedPrice = await createNewProductItem.checkPrice();
+  const formattedPrice = await createNewProduct.checkPrice();
 
   // check for a main image
   if (images.length < 1) {
@@ -303,16 +355,16 @@ const createProduct = catchAsync(async (data, images) => {
   }
 
   // upload images
-  const imagesArray = await createNewProductItem.uploadImages(images, name);
+  const imagesArray = await createNewProduct.uploadImages(images, name);
   const mainPublicId = imagesArray[0];
   if (hasMain) imagesArray.shift();
   imagesArray.pop();
 
   // SKU - generation === categoryName + productName + productVariationOptions
-  const { sku, orderedOptions } = createNewProductItem.generateSKU(categoryName, name);
+  const { sku, orderedOptions } = createNewProduct.generateSKU(categoryName, name);
 
   const createProductTransaction = await prismaProducts.$transaction(async (prisma) => {
-    const createNewProduct = await prisma.product
+    const createNewProductTransaction = await prisma.product
       .create({
         data: {
           category_id: categoryId,
@@ -336,8 +388,8 @@ const createProduct = catchAsync(async (data, images) => {
         throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err.message, false);
       });
 
-    const [createProductItem, createProductConfiguration] = await createNewProductItem.createProductItemTransaction(
-      createNewProduct.id,
+    const [createProductItem, createProductConfiguration] = await createNewProduct.createProductItemTransaction(
+      createNewProductTransaction.id,
       sku,
       orderedOptions,
       imagesArray,
@@ -346,13 +398,75 @@ const createProduct = catchAsync(async (data, images) => {
     );
 
     return {
-      product: createNewProduct,
+      product: createNewProductTransaction,
       productItem: createProductItem,
       [createProductConfiguration.length > 1 ? "productConfigurations" : "productConfiguration"]: createProductConfiguration,
     };
   });
 
   return createProductTransaction;
+});
+
+/**
+ * @desc Update a Product
+ * @param { Object } data
+ * @param { Object } image
+ * @property { String } data.productId
+ * @returns { Object }
+ */
+const updateProduct = catchAsync(async (data, image) => {
+  const updateNewProduct = new CreateProductItem();
+  const { productId } = data;
+  // eslint-disable-next-line no-param-reassign
+  delete data.productId;
+
+  // validate data object for something to update
+  if (!image && Object.keys(data).length === 0) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+  }
+
+  // validate product id
+  const product = await prismaProducts.product.findUnique({
+    where: {
+      id: productId,
+    },
+    select: {
+      name: true,
+    },
+  });
+
+  if (!product) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
+  const { name } = product;
+
+  if (data.name && data.name !== name) {
+    // eslint-disable-next-line no-param-reassign
+    data.name = name;
+  }
+
+  // validate image
+  if (image) {
+    const publicId = await updateNewProduct.validateImage(image, productId, name);
+    // eslint-disable-next-line no-param-reassign
+    data.image = publicId;
+  }
+
+  const result = await prismaProducts.product.update({
+    where: {
+      id: productId,
+    },
+    data,
+    select: {
+      id: true,
+      category_id: true,
+      name: true,
+      description: true,
+      image: true,
+    },
+  });
+
+  return {
+    product: result,
+  };
 });
 
 /**
@@ -414,5 +528,6 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
 
 module.exports = {
   createProduct,
+  updateProduct,
   createProductItem,
 };
