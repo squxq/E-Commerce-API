@@ -79,9 +79,30 @@ const createProductItem = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * @desc Update a Product Item Controller
+ * @param { Object } req
+ * @param { Object } res
+ * @property { Object } req.body
+ * @property { Object } req.files
+ * @property { String } req.query.images
+ * @property { String } req.body.productItemId
+ * @returns { JSON }
+ */
+const updateProductItem = catchAsync(async (req, res) => {
+  const result = await productService.updateProductItem(req.body, req.files, req.query.images);
+
+  return res.status(httpStatus.OK).json({
+    type: "Success",
+    message: "Product Item successfully updated",
+    output: result,
+  });
+});
+
 module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
   createProductItem,
+  updateProductItem,
 };

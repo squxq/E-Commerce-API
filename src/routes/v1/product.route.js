@@ -11,5 +11,6 @@ router.patch("/update", singleFile("main"), validate(productValidation.updatePro
 router.delete("/delete/:productId", validate(productValidation.deleteProduct), productController.deleteProduct);
 
 router.post("/create/item", anyFile(), validate(productValidation.createProductItem), productController.createProductItem);
+router.patch("/update/item", anyFile(), validate(productValidation.updateProductItem), productController.updateProductItem);
 
 module.exports = router;

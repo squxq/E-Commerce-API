@@ -98,8 +98,42 @@ const createProductItem = {
         .label("Image")
     )
     .required()
-    .max(10)
     .label("Images"),
+};
+
+const updateProductItem = {
+  body: Joi.object().keys({
+    productItemId: Joi.string()
+      .required()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Item Id"),
+    quantity: Joi.number().integer().greater(0).label("Quantity in Stock"),
+    price: Joi.object()
+      .keys({
+        value: Joi.string().required().label("Price value"),
+        currency: Joi.string().required().label("Currency ISO"),
+      })
+      .label("Product's price"),
+    options: Joi.object().label("Variation Options"),
+  }),
+  // files: Joi.array()
+  //   .items(
+  //     Joi.object()
+  //       .keys({
+  //         fieldname: Joi.string().required(),
+  //         originalname: Joi.string(),
+  //         encoding: Joi.string().required(),
+  //         mimetype: Joi.string().required(),
+  //         buffer: Joi.binary().encoding("base64").required(),
+  //         size: Joi.number().required(),
+  //       })
+  //       .required()
+  //       .label("Image")
+  //   )
+  //   .label("Images"),
+  // query: Joi.object().keys({
+  //   images: Joi.string().default("add").valid("add", "replace").label("Add or Replace Images"),
+  // }),
 };
 
 module.exports = {
@@ -107,4 +141,5 @@ module.exports = {
   updateProduct,
   deleteProduct,
   createProductItem,
+  updateProductItem,
 };

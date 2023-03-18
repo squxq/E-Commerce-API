@@ -148,8 +148,9 @@ class CreateProductItem {
     return { sku, orderedOptions };
   }
 
-  // createItemTransaction
-  async createProductItemTransaction(productId, sku, orderedOptions, imagesArray, formattedPrice, prisma) {
+  // verify the product item options
+  // eslint-disable-next-line class-methods-use-this
+  async verifyProductItemOptions(prisma, orderedOptions, productId) {
     const variationsPromises = Object.entries(orderedOptions).map(async ([key, value]) => {
       return prisma.$queryRaw`
           SELECT a.id
@@ -169,7 +170,7 @@ class CreateProductItem {
       WHERE a.product_item_id IN (
         SELECT b.id
         FROM product_item AS b
-        WHERE b.product_id = '505ed5d9-6f8c-431a-9304-cf41418aea2d'
+        WHERE b.product_id = ${productId}
       )
       GROUP BY a.product_item_id
     `;
@@ -181,6 +182,34 @@ class CreateProductItem {
         throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
       }
     });
+
+    return variationsIds;
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  async createProductConfigurations(prisma, variationsIds, productItemId) {
+    const configurationPromises = variationsIds.map(async (id) =>
+      prisma.product_configuration.create({
+        data: {
+          product_item_id: productItemId,
+          variation_option_id: id,
+        },
+        select: {
+          id: true,
+          product_item_id: true,
+          variation_option_id: true,
+        },
+      })
+    );
+
+    const createProductConfiguration = await Promise.all(configurationPromises);
+
+    return createProductConfiguration;
+  }
+
+  // createItemTransaction
+  async createProductItemTransaction(productId, sku, orderedOptions, imagesArray, formattedPrice, prisma) {
+    const variationsIds = await this.verifyProductItemOptions(prisma, orderedOptions, productId);
 
     const createProductItem = await prisma.product_item.create({
       data: {
@@ -200,21 +229,7 @@ class CreateProductItem {
       },
     });
 
-    const configurationPromises = variationsIds.map(async (id) =>
-      prisma.product_configuration.create({
-        data: {
-          product_item_id: createProductItem.id,
-          variation_option_id: id,
-        },
-        select: {
-          id: true,
-          product_item_id: true,
-          variation_option_id: true,
-        },
-      })
-    );
-
-    const createProductConfiguration = await Promise.all(configurationPromises);
+    const createProductConfiguration = await this.createProductConfigurations(prisma, variationsIds, createProductItem.id);
 
     return [createProductItem, createProductConfiguration];
   }
@@ -236,7 +251,11 @@ class CreateProductItem {
         // eslint-disable-next-line no-param-reassign
         productName = await this.getProductName(productId);
       } else {
-        throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Its not possible to upload images without a product name.");
+        throw new ApiError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Its not possible to upload images without a product name.",
+          false
+        );
       }
     }
 
@@ -396,6 +415,45 @@ class CreateProductItem {
       };
     }
     // we are deleting a single product item
+  }
+
+  // update product item
+  async updateProductItemTransaction(productItemId, data, variationsIds = null) {
+    const updateTransaction = prismaProducts.$transaction(async (prisma) => {
+      let productConfigurations = [];
+      if (variationsIds) {
+        // means that data.options exists
+        // delete and create new product_configurations
+        await prisma.$queryRaw`
+          DELETE FROM product_configuration
+          WHERE product_item_id = ${productItemId}
+        `;
+
+        productConfigurations = await this.createProductConfigurations(prisma, variationsIds, productItemId);
+      }
+
+      const updateProductItemTransaction = await prisma.product_item.update({
+        where: {
+          id: productItemId,
+        },
+        data,
+        select: {
+          id: true,
+          product_id: true,
+          SKU: true,
+          QIS: true,
+          price: true,
+        },
+      });
+
+      return {
+        productItem: updateProductItemTransaction,
+        [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]:
+          productConfigurations.length !== 0 ? productConfigurations : undefined,
+      };
+    });
+
+    return updateTransaction;
   }
 }
 
@@ -575,7 +633,7 @@ const deleteProduct = catchAsync(async (productId) => {
     GROUP BY a.id
   `;
 
-  if (!product) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
+  if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
 
   const deleteProductTransaction = await prismaProducts.$transaction(async (prisma) => {
     // delete all product items and their images from cloudinary
@@ -660,9 +718,91 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
   return createProductItemTransaction;
 });
 
+/**
+ * @desc Update a Product Item
+ * @param { Object } data
+ * @param { Object } images
+ * @param { String } query
+ * @property { String } data.productItemId
+ * @returns { Object }
+ */
+const updateProductItem = catchAsync(async (data, images, query) => {
+  const { productItemId } = data;
+  // eslint-disable-next-line no-param-reassign
+  delete data.productItemId;
+
+  // validate data object for something to update
+  if (images.length === 0 && Object.keys(data).length === 0) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+  }
+
+  // validate product item id
+  const productItem = await prismaProducts.$queryRaw`
+    SELECT b.id AS product_id, b.name AS product_name, c.id AS category_id, c.name AS category_name
+    FROM product_item AS a
+    LEFT JOIN product AS b
+    ON b.id = a.product_id
+    LEFT JOIN product_category AS c
+    ON c.id = b.category_id
+    WHERE a.id = ${productItemId}
+  `;
+
+  if (productItem.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Product Item not found");
+
+  const updateNewProductItem = new CreateProductItem(data.quantity, data.price, data.options, productItem[0].category_id);
+
+  if (data.quantity) {
+    // eslint-disable-next-line no-param-reassign
+    data.QIS = Math.floor(data.quantity);
+
+    // eslint-disable-next-line no-param-reassign
+    delete data.quantity;
+  }
+
+  if (data.price) {
+    // check and format the price
+    const formattedPrice = await updateNewProductItem.checkPrice();
+    // eslint-disable-next-line no-param-reassign
+    data.price = formattedPrice;
+  }
+
+  let variationsIds;
+  if (data.options) {
+    // check the allowed options for product configuration
+    await updateNewProductItem.checkOptions();
+
+    // re-generate sku
+    const { sku, orderedOptions } = updateNewProductItem.generateSKU(
+      productItem[0].category_name,
+      productItem[0].product_name
+    );
+
+    // eslint-disable-next-line no-param-reassign
+    data.SKU = sku.join("-");
+
+    variationsIds = await updateNewProductItem.verifyProductItemOptions(
+      prismaProducts,
+      orderedOptions,
+      productItem[0].product_id
+    );
+
+    // eslint-disable-next-line no-param-reassign
+    delete data.options;
+  }
+
+  const updateProductItemTransaction = await updateNewProductItem.updateProductItemTransaction(
+    productItemId,
+    data,
+    variationsIds
+  );
+
+  return updateProductItemTransaction;
+});
+
 module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
   createProductItem,
+  updateProductItem,
 };
