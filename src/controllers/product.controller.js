@@ -40,6 +40,23 @@ const updateProduct = catchAsync(async (req, res) => {
 });
 
 /**
+ * @desc Delete a Product Controller
+ * @param { Object } req
+ * @param { Object } res
+ * @property { String } req.params.productId
+ * @returns { JSON }
+ */
+const deleteProduct = catchAsync(async (req, res) => {
+  const result = await productService.deleteProduct(req.params.productId);
+
+  return res.status(httpStatus.OK).json({
+    type: "Success",
+    message: "Product deleted successfully",
+    output: result,
+  });
+});
+
+/**
  * @desc Create a new Product Item Controller
  * @param { Object } req
  * @param { Object } res
@@ -65,5 +82,6 @@ const createProductItem = catchAsync(async (req, res) => {
 module.exports = {
   createProduct,
   updateProduct,
+  deleteProduct,
   createProductItem,
 };

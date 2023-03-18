@@ -39,7 +39,21 @@ const deleteImage = catchAsync(async (publicId) => {
   return result;
 });
 
+const updateName = catchAsync(async (fromPublicId, toPublicId) => {
+  const options = {
+    phash: true,
+    use_filename: true,
+    unique_filename: true,
+    overwrite: true,
+    invalidate: true,
+  };
+
+  const { public_id: publicId } = await cloudinary.v2.uploader.rename(fromPublicId, toPublicId, options);
+  return publicId;
+});
+
 module.exports = {
   uploadImage,
   deleteImage,
+  updateName,
 };

@@ -58,6 +58,15 @@ const updateProduct = {
     .label("Image"),
 };
 
+const deleteProduct = {
+  params: Joi.object().keys({
+    productId: Joi.string()
+      .required()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Id"),
+  }),
+};
+
 const createProductItem = {
   body: Joi.object().keys({
     productId: Joi.string()
@@ -96,5 +105,6 @@ const createProductItem = {
 module.exports = {
   createProduct,
   updateProduct,
+  deleteProduct,
   createProductItem,
 };

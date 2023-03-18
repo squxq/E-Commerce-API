@@ -3,7 +3,7 @@ const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
 const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
-const { uploadImage } = require("../utils/cloudinary");
+const { uploadImage, updateName } = require("../utils/cloudinary");
 const parser = require("../utils/parser");
 const convertCurrency = require("../utils/currencyConverter");
 const { Currencies, FxRates } = require("../models");
@@ -229,7 +229,7 @@ class CreateProductItem {
     return product.name;
   }
 
-  async uploadImages(images, productName = null, productId = null, buffer = null) {
+  async uploadImages(images, productName = null, productId = null, buffer = null, main = false) {
     if (!productName) {
       if (productId) {
         // eslint-disable-next-line no-param-reassign
@@ -255,10 +255,10 @@ class CreateProductItem {
       // images
       const imagePromises = images.map(async (image) => {
         if (image.fieldname === "main") {
-          const { public_id: publicId } = await uploadImage(parser(image).content, folder, `${formattedName}_main`);
+          const { public_id: publicId } = await uploadImage(parser(image).content, folder, `main`);
           return publicId;
         }
-        const { public_id: publicId } = await uploadImage(parser(image).content, folder, formattedName);
+        const { public_id: publicId } = await uploadImage(parser(image).content, folder);
         return publicId;
       });
 
@@ -269,14 +269,27 @@ class CreateProductItem {
     }
 
     // if we pass a buffer
-    const publicId = await uploadImage(buffer || parser(images).content, folder, formattedName);
+    const publicId = await uploadImage(buffer, folder, main ? "main" : null);
     return publicId.public_id;
+  }
+
+  // get the main image from the db
+  // eslint-disable-next-line class-methods-use-this
+  async removeMainCloudinary(images) {
+    const { images: main } = images.find(({ images: mainPublicId }) =>
+      mainPublicId.substring(mainPublicId.lastIndexOf("/") + 1).startsWith("main")
+    );
+
+    // rename it in cloudinary
+    await updateName(
+      main,
+      `${main.substring(0, main.lastIndexOf("/") + 1)}${main.substring(main.lastIndexOf("/") + 1).replace("main_", "")}`
+    );
   }
 
   // validate single image
   async validateImage(image, productId, productName) {
     // file is not empty because we checked it in updateProduct
-
     // buffer
     const { content: buffer } = parser(image);
 
@@ -302,7 +315,7 @@ class CreateProductItem {
 
     let publicId = "";
     images.every(({ images: imagePublicId }) => {
-      if (imagePublicId.substr(imagePublicId.length - 32) === etag) {
+      if (imagePublicId.substring(imagePublicId.length - 32) === etag) {
         // eslint-disable-next-line no-param-reassign
         publicId = imagePublicId;
         return false;
@@ -311,9 +324,27 @@ class CreateProductItem {
     });
 
     if (!publicId) {
+      // change main image from cloudinary
+      await this.removeMainCloudinary(images);
+
       // we have to upload the image
-      publicId = await this.uploadImages(null, productName, null, buffer);
+      publicId = await this.uploadImages(null, productName, null, buffer, true);
+
       return publicId;
+    }
+
+    // if the image already exists we need to check if the image starts with main and if yes we just return nothing
+    if (!publicId.substring(publicId.lastIndexOf("/") + 1).startsWith("main")) {
+      // change main image from cloudinary
+      await this.removeMainCloudinary(images);
+
+      // update name in cloudinary and db to `main_${publicId}`
+      const newPublicId = await updateName(
+        publicId,
+        `${publicId.substring(0, publicId.lastIndexOf("/") + 1)}main_${publicId.substring(publicId.lastIndexOf("/") + 1)}`
+      );
+
+      return newPublicId;
     }
   }
 }
@@ -468,6 +499,12 @@ const updateProduct = catchAsync(async (data, image) => {
     product: result,
   };
 });
+
+/**
+ * @desc Delete a product
+ * @param { String } productId
+ * @return { Object }
+ */
 
 /**
  * @desc Create new product item

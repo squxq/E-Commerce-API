@@ -7,7 +7,8 @@ const { anyFile, singleFile } = require("../../utils/multer");
 const router = express.Router();
 
 router.post("/create", anyFile(), validate(productValidation.createProduct), productController.createProduct);
-router.patch("/update", singleFile(), validate(productValidation.updateProduct), productController.updateProduct);
+router.patch("/update", singleFile("main"), validate(productValidation.updateProduct), productController.updateProduct);
+router.delete("/delete", validate(productValidation.deleteProduct), productController.deleteProduct);
 
 router.post("/create/item", anyFile(), validate(productValidation.createProductItem), productController.createProductItem);
 
