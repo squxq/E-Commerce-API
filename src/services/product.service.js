@@ -1,9 +1,10 @@
 const hash = require("object-hash");
 const httpStatus = require("http-status");
+const { Prisma } = require("@prisma/client");
 const catchAsync = require("../utils/catchAsync");
 const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
-const { uploadImage, updateName } = require("../utils/cloudinary");
+const { uploadImage, updateName, deleteImage } = require("../utils/cloudinary");
 const parser = require("../utils/parser");
 const convertCurrency = require("../utils/currencyConverter");
 const { Currencies, FxRates } = require("../models");
@@ -275,27 +276,33 @@ class CreateProductItem {
 
   // get the main image from the db
   // eslint-disable-next-line class-methods-use-this
-  async removeMainCloudinary(images) {
-    const { images: main } = images.find(({ images: mainPublicId }) =>
-      mainPublicId.substring(mainPublicId.lastIndexOf("/") + 1).startsWith("main")
-    );
+  async removeMainCloudinary(images, productId) {
+    const main = images.find((mainPublicId) => mainPublicId.substring(mainPublicId.lastIndexOf("/") + 1).startsWith("main"));
+
+    const newPublicId = `${main.substring(0, main.lastIndexOf("/") + 1)}${main
+      .substring(main.lastIndexOf("/") + 1)
+      .replace("main_", "")}`;
 
     // rename it in cloudinary
-    await updateName(
-      main,
-      `${main.substring(0, main.lastIndexOf("/") + 1)}${main.substring(main.lastIndexOf("/") + 1).replace("main_", "")}`
-    );
+    await updateName(main, newPublicId);
+
+    // rename it in db
+    await prismaProducts.$queryRaw`
+      UPDATE product_item
+      SET images = array_replace(images, ${main}, ${newPublicId})
+      WHERE product_id = ${productId}
+        AND ${main} = ANY(images)
+    `;
   }
 
   // validate single image
   async validateImage(image, productId, productName) {
     // file is not empty because we checked it in updateProduct
-    // buffer
     const { content: buffer } = parser(image);
 
     const etag = hash(buffer, { algorithm: "md5" });
 
-    const images = await prismaProducts.$queryRaw`
+    let images = await prismaProducts.$queryRaw`
       SELECT * FROM (
         (
           SELECT image AS images
@@ -313,8 +320,10 @@ class CreateProductItem {
       ) AS a
     `;
 
+    images = Array.from(new Set(images.map((obj) => obj.images)));
+
     let publicId = "";
-    images.every(({ images: imagePublicId }) => {
+    images.every((imagePublicId) => {
       if (imagePublicId.substring(imagePublicId.length - 32) === etag) {
         // eslint-disable-next-line no-param-reassign
         publicId = imagePublicId;
@@ -325,7 +334,7 @@ class CreateProductItem {
 
     if (!publicId) {
       // change main image from cloudinary
-      await this.removeMainCloudinary(images);
+      await this.removeMainCloudinary(images, productId);
 
       // we have to upload the image
       publicId = await this.uploadImages(null, productName, null, buffer, true);
@@ -336,7 +345,7 @@ class CreateProductItem {
     // if the image already exists we need to check if the image starts with main and if yes we just return nothing
     if (!publicId.substring(publicId.lastIndexOf("/") + 1).startsWith("main")) {
       // change main image from cloudinary
-      await this.removeMainCloudinary(images);
+      await this.removeMainCloudinary(images, productId);
 
       // update name in cloudinary and db to `main_${publicId}`
       const newPublicId = await updateName(
@@ -344,8 +353,49 @@ class CreateProductItem {
         `${publicId.substring(0, publicId.lastIndexOf("/") + 1)}main_${publicId.substring(publicId.lastIndexOf("/") + 1)}`
       );
 
+      // rename all image publicIds in db
+      await prismaProducts.$queryRaw`
+        UPDATE product_item
+        SET images = array_replace(images, ${publicId}, ${newPublicId})
+        WHERE product_id = ${productId}
+          AND ${publicId} = ANY(images)
+      `;
+
       return newPublicId;
     }
+  }
+
+  // delete product item(s)
+  // eslint-disable-next-line class-methods-use-this
+  async deleteProductItems(prisma, products, multiple = false) {
+    if (multiple) {
+      // which means we are deleting the product
+      // first we delete the product_configurations
+
+      const productConfigurations = await prisma.$queryRaw`
+        DELETE FROM product_configuration
+        WHERE id IN (${Prisma.join(products.product_configuration_ids)})
+        RETURNING id, product_item_id, variation_option_id
+      `;
+
+      const imagesPromises = Array.from(new Set([...products.product_item_public_ids, products.product_public_id])).map(
+        async (image) => deleteImage(image)
+      );
+
+      await Promise.all(imagesPromises);
+
+      const productItems = await prisma.$queryRaw`
+        DELETE FROM product_item
+        WHERE id IN (${Prisma.join(products.product_item_ids)})
+        RETURNING id, product_id, "SKU", "QIS", images, price
+      `;
+
+      return {
+        [productItems.length === 1 ? "productItem" : "productItems"]: productItems,
+        [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]: productConfigurations,
+      };
+    }
+    // we are deleting a single product item
   }
 }
 
@@ -505,6 +555,53 @@ const updateProduct = catchAsync(async (data, image) => {
  * @param { String } productId
  * @return { Object }
  */
+const deleteProduct = catchAsync(async (productId) => {
+  const deleteNewProduct = new CreateProductItem();
+  // delete product itself
+
+  // validate product id
+  const product = await prismaProducts.$queryRaw`
+    SELECT a.id AS product_id,
+      a.image AS product_public_id,
+      array_agg(b.id) AS product_item_ids,
+      ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
+      array_agg(c.id) AS product_configuration_ids
+    FROM product AS a
+    LEFT JOIN product_item AS b
+    ON b.product_id = a.id
+    LEFT JOIN product_configuration AS c
+    ON c.product_item_id = b.id
+    WHERE a.id = ${productId}
+    GROUP BY a.id
+  `;
+
+  if (!product) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
+
+  const deleteProductTransaction = await prismaProducts.$transaction(async (prisma) => {
+    // delete all product items and their images from cloudinary
+    const productItems = await deleteNewProduct.deleteProductItems(prisma, product[0], true);
+
+    const deletedProduct = await prisma.product.delete({
+      where: {
+        id: productId,
+      },
+      select: {
+        id: true,
+        category_id: true,
+        name: true,
+        description: true,
+        image: true,
+      },
+    });
+
+    return {
+      deletedProduct,
+      ...productItems,
+    };
+  });
+
+  return deleteProductTransaction;
+});
 
 /**
  * @desc Create new product item
@@ -566,5 +663,6 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
 module.exports = {
   createProduct,
   updateProduct,
+  deleteProduct,
   createProductItem,
 };
