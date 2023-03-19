@@ -43,6 +43,9 @@ const updateProduct = {
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
       .label("Product Id"),
+    categoryId: Joi.string()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Category Id"),
     name: Joi.string().label("Product Name"),
     description: Joi.string().label("Product Description"),
   }),
@@ -55,9 +58,13 @@ const updateProduct = {
       buffer: Joi.binary().encoding("base64").required(),
       size: Joi.number().required(),
     })
-    .label("Image"),
+    .label("Product Image"),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save Resources"),
+  }),
 };
 
+// its not possible to save resources when deleting a product
 const deleteProduct = {
   params: Joi.object().keys({
     productId: Joi.string()
@@ -107,6 +114,9 @@ const updateProductItem = {
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
       .label("Product Item Id"),
+    // produductId: Joi.string()
+    //   .guid({ version: ["uuidv4", "uuidv5"] })
+    //   .label("Product Id"),
     quantity: Joi.number().integer().greater(0).label("Quantity in Stock"),
     price: Joi.object()
       .keys({

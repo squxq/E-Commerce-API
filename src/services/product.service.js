@@ -415,6 +415,63 @@ class CreateProductItem {
       };
     }
     // we are deleting a single product item
+    // products is a product item id
+    // first we check for duplicate images
+
+    const images = await prisma.$queryRaw`
+      SELECT b.product_id, b.images
+      FROM product_item AS b
+      WHERE b.id = ${products}
+    `;
+
+    const imagesPromise = images[0].images.map(async (publicId) => {
+      // each public id and the product id under the name of images[0].product_id
+      const result = await prisma.$queryRaw`
+        SELECT COUNT(*)::int
+        FROM (
+          SELECT a.*
+          FROM product_item AS a
+          WHERE a.product_id = ${images[0].product_id}
+            AND ${publicId} = ANY(a.images)
+          LIMIT 2
+        ) AS b
+      `;
+
+      // count === 1 || count === 2
+      return {
+        publicId,
+        count: result[0].count,
+      };
+    });
+
+    const countResults = await Promise.all(imagesPromise);
+
+    await Promise.all(
+      countResults.map(async ({ publicId, count }) => {
+        if (count === 1) {
+          await deleteImage(publicId);
+        }
+      })
+    );
+
+    // delete product item
+    const productItem = await prisma.product_item.delete({
+      where: {
+        id: products,
+      },
+      select: {
+        id: true,
+        product_id: true,
+        SKU: true,
+        QIS: true,
+        images: true,
+        price: true,
+      },
+    });
+
+    return {
+      productItem,
+    };
   }
 
   // update product item
@@ -454,6 +511,165 @@ class CreateProductItem {
     });
 
     return updateTransaction;
+  }
+
+  // change category id
+  async updateCategory(prisma, categoryId, productId, save) {
+    // check if category exists and has the variations and variation options needed
+    // for every product item check their variations options
+
+    // get variation and variation options
+    const productVariations = await prisma.$queryRaw`
+      SELECT a.product_item_id AS product_item_id,
+        array_agg(d.name) AS variation_names,
+        array_agg(c.value) AS variation_values
+      FROM product_configuration AS a
+      LEFT JOIN variation_option AS c
+      ON c.id = a.variation_option_id
+      LEFT JOIN variation AS d
+      ON d.id = c.variation_id
+      WHERE a.product_item_id IN (
+        SELECT b.id
+        FROM product_item AS b
+        WHERE b.product_id = ${productId}
+      )
+      GROUP BY a.product_item_id
+    `;
+
+    // check if new category id has the variations and variations id
+    const categoryVariations = await prisma.$queryRaw`
+      SELECT a.name AS category_name,
+        b.id AS variation_id,
+        b.name AS variation_name,
+        array_agg(c.value) AS variation_values
+      FROM product_category AS a
+      LEFT JOIN variation AS b
+      ON b.category_id = a.id
+      LEFT JOIN variation_option AS c
+      ON c.variation_id = b.id
+      WHERE a.id = ${categoryId}
+      GROUP BY b.id, a.name
+    `;
+
+    if (categoryVariations.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Category not found");
+    else if (!categoryVariations[0].variation_id)
+      throw new ApiError(httpStatus.BAD_REQUEST, "Category has no variations, its not possible to update the product");
+
+    // check if category has enough variations and variation options for all the product items
+    const validProducts = productVariations.map(
+      ({ product_item_id: id, variation_names: names, variation_values: values }) => {
+        // eslint-disable-next-line array-callback-return
+        let variations = names.map((name, index) => {
+          const match = categoryVariations.find(({ variation_name: variationName, variation_values: variationValues }) => {
+            return variationName === name && variationValues.includes(values[index]);
+          });
+
+          if (match) {
+            return {
+              variationId: match.variation_id,
+              name,
+              value: values[index],
+            };
+          }
+        });
+
+        variations = variations.filter((variation) => variation !== undefined);
+
+        if (save && variations.length !== names.length) {
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            `Its not possible to save all resources due to the new product category not having the variations: ${names.join(
+              ", "
+            )} with the variation options: ${values.join(", ")}`
+          );
+        }
+
+        return {
+          id,
+          delete: variations.length === 0,
+          ...(variations.length > 0 && { variations }),
+        };
+      }
+    );
+
+    // save === false => check if there is at least one product item that can be saved
+    if (!validProducts.find(({ delete: toDelete }) => toDelete === false)) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Product cannot be updated to the specified category because no product item can be saved"
+      );
+    }
+
+    // check options because on deleting some variations from the products they may have the same variation options
+    // only for save === false because its only here that we delete variations
+    const options = validProducts.map(({ variations }) => {
+      // variations is an array
+      return variations
+        .map((variationObj) => variationObj.variationId)
+        .sort()
+        .join(",");
+    });
+
+    if (Array.from(new Set(options)).length !== options.length) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Result from deleting variations such that product items can be saved, is that some product_items have the same variation options, which is not allowed`
+      );
+    }
+
+    // 2 options: all product items have delete: false and all its variations are allowed in the target category || one product item has delete: false
+    // we just have to move the product to the target category and delete and create the product_configurations
+
+    // delete all product_configurations
+    await prisma.product_configuration.deleteMany({
+      where: {
+        product_item_id: {
+          in: validProducts.map(({ id }) => id),
+        },
+      },
+    });
+
+    // create product configurations
+    const updatedProductConfigurations = validProducts.map(({ id, delete: toDelete, variations }) => {
+      if (!toDelete) {
+        // variations => { variationId, name, value}
+        // find variation option such that variation_id === variationId, variation name === name and variation option value === value
+        const productConfigurations = variations.map(async (variation) => {
+          const newVariation = await prisma.$queryRaw`
+                SELECT b.id AS id
+                FROM variation AS a
+                LEFT JOIN variation_option AS b
+                ON b.variation_id = a.id AND b.value = ${variation.value}
+                WHERE a.id = ${variation.variationId} AND a.name = ${variation.name}
+              `;
+
+          if (newVariation.length === 0) throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong", false);
+
+          return prisma.product_configuration.create({
+            data: {
+              product_item_id: id,
+              variation_option_id: newVariation[0].id,
+            },
+            select: {
+              id: true,
+              product_item_id: true,
+              variation_option_id: true,
+            },
+          });
+        });
+
+        return Promise.all(productConfigurations);
+      }
+
+      // delete product item
+      return this.deleteProductItems(prisma, id);
+    });
+
+    return {
+      categoryName: categoryVariations[0].category_name,
+      productOptions: options,
+      productConfigs: await Promise.all(updatedProductConfigurations),
+    };
   }
 }
 
@@ -550,10 +766,11 @@ const createProduct = catchAsync(async (data, images) => {
  * @desc Update a Product
  * @param { Object } data
  * @param { Object } image
+ * @param { Boolean } save
  * @property { String } data.productId
  * @returns { Object }
  */
-const updateProduct = catchAsync(async (data, image) => {
+const updateProduct = catchAsync(async (data, image, save) => {
   const updateNewProduct = new CreateProductItem();
   const { productId } = data;
   // eslint-disable-next-line no-param-reassign
@@ -589,23 +806,76 @@ const updateProduct = catchAsync(async (data, image) => {
     data.image = publicId;
   }
 
-  const result = await prismaProducts.product.update({
-    where: {
-      id: productId,
-    },
-    data,
-    select: {
-      id: true,
-      category_id: true,
-      name: true,
-      description: true,
-      image: true,
-    },
+  const updateProductCategoryTransaction = await prismaProducts.$transaction(async (prisma) => {
+    let categoryName;
+    let productConfigurations;
+    let productOptions
+    if (data.categoryId) {
+      // check if category has variations which means its valid and see if has all variations for all product items
+      // if i can maintain all the product items with at least one variation then i can change the category id
+      // if i cant either delete the product items if one remains or throw an error
+      const {
+        categoryName: catName,
+        productOptions: prodOptions,
+        productConfigs,
+      } = await updateNewProduct.updateCategory(prisma, data.categoryId, productId, save);
+
+      console.log(catName, productConfigs);
+      productConfigurations = [].concat(...productConfigs);
+      categoryName = catName;
+      productOptions = prodOptions
+
+      // eslint-disable-next-line no-param-reassign
+      data.category_id = data.categoryId;
+      // eslint-disable-next-line no-param-reassign
+      delete data.categoryId;
+    }
+
+    const result = await prismaProducts.product.update({
+      where: {
+        id: productId,
+      },
+      data,
+      select: {
+        id: true,
+        category_id: true,
+        name: true,
+        description: true,
+        image: true,
+      },
+    });
+
+    // re-generate sku based on current options and current name
+    // options and category name only change if categoryId is updated and name only changes if product name is updated
+    let sku;
+    if (data.name && categoryName) {
+      const { sku: productSKU } = updateNewProduct.generateSKU(categoryName, data.name, options);
+    } else if (data.name && !categoryName) {
+      categoryName = await prisma.product_category.findUnique({
+        where: {
+          id: result.category_id,
+        },
+        select: {
+          name: true,
+        },
+      });
+      categoryName = categoryName.name;
+
+      productOptions =
+
+      const { sku: productSKU } = updateNewProduct.generateSKU(categoryName, data.name, options);
+    } else if (!data.name && categoryName) {
+      // eslint-disable-next-line no-param-reassign
+      data.name = result.name;
+    }
+
+    return {
+      product: result,
+      [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]: productConfigurations,
+    };
   });
 
-  return {
-    product: result,
-  };
+  return updateProductCategoryTransaction;
 });
 
 /**
@@ -615,7 +885,6 @@ const updateProduct = catchAsync(async (data, image) => {
  */
 const deleteProduct = catchAsync(async (productId) => {
   const deleteNewProduct = new CreateProductItem();
-  // delete product itself
 
   // validate product id
   const product = await prismaProducts.$queryRaw`
@@ -639,6 +908,7 @@ const deleteProduct = catchAsync(async (productId) => {
     // delete all product items and their images from cloudinary
     const productItems = await deleteNewProduct.deleteProductItems(prisma, product[0], true);
 
+    // delete product itself
     const deletedProduct = await prisma.product.delete({
       where: {
         id: productId,

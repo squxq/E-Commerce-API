@@ -27,10 +27,11 @@ const createProduct = catchAsync(async (req, res) => {
  * @property { Object } req.body
  * @property { String } req.productId
  * @property { Object } req.file
+ * @property { Boolean } req.query.save
  * @returns { JSON }
  */
 const updateProduct = catchAsync(async (req, res) => {
-  const result = await productService.updateProduct(req.body, req.file);
+  const result = await productService.updateProduct(req.body, req.file, req.query.save);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
