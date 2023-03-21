@@ -28,7 +28,7 @@ class Variation {
       (
         SELECT c.id AS category_id, array_agg(d.name) AS names
         FROM product_category AS c
-        LEFT JOIN variation AS d
+        INNER JOIN variation AS d
         ON d.category_id = c.id
         WHERE c.id = ${id || this.categoryId}
         GROUP BY c.id
@@ -102,7 +102,7 @@ class Variation {
     const result = await prismaProducts.$queryRaw`
       SELECT a.id, array_agg(b.value) AS values
       FROM variation AS a
-      LEFT JOIN variation_option AS b
+      INNER JOIN variation_option AS b
       ON b.variation_id = a.id
       WHERE a.id = ${variationId}
       GROUP BY a.id
@@ -292,7 +292,7 @@ class Variation {
     const option = await prismaProducts.$queryRaw`
       SELECT b.id
       FROM variation_option AS a
-      LEFT JOIN variation AS b
+      INNER JOIN variation AS b
       ON a.variation_id = b.id
       WHERE a.id = ${optionId}
     `;

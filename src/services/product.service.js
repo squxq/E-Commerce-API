@@ -119,12 +119,12 @@ class CreateProductItem {
   }
 
   // generateSKU
-  generateSKU(categoryName, productName) {
-    const orderedOptions = Object.keys(this.options)
+  generateSKU(categoryName, productName, options) {
+    const orderedOptions = Object.keys(options || this.options)
       .sort()
       .reduce((obj, key) => {
         // eslint-disable-next-line no-undef, no-param-reassign
-        obj[key] = this.options[key];
+        obj[key] = options ? options[key] : this.options[key];
         return obj;
       }, {});
 
@@ -155,7 +155,7 @@ class CreateProductItem {
       return prisma.$queryRaw`
           SELECT a.id
           FROM variation_option AS a
-          LEFT JOIN variation AS b
+          INNER JOIN variation AS b
           ON b.id = a.variation_id
           WHERE b.name = ${key} AND a.value = ${value}
         `;
@@ -524,9 +524,9 @@ class CreateProductItem {
         array_agg(d.name) AS variation_names,
         array_agg(c.value) AS variation_values
       FROM product_configuration AS a
-      LEFT JOIN variation_option AS c
+      INNER JOIN variation_option AS c
       ON c.id = a.variation_option_id
-      LEFT JOIN variation AS d
+      INNER JOIN variation AS d
       ON d.id = c.variation_id
       WHERE a.product_item_id IN (
         SELECT b.id
@@ -541,11 +541,12 @@ class CreateProductItem {
       SELECT a.name AS category_name,
         b.id AS variation_id,
         b.name AS variation_name,
-        array_agg(c.value) AS variation_values
+        array_agg(c.value) AS variation_values,
+        array_agg(c.id) AS variation_option_ids
       FROM product_category AS a
-      LEFT JOIN variation AS b
+      INNER JOIN variation AS b
       ON b.category_id = a.id
-      LEFT JOIN variation_option AS c
+      INNER JOIN variation_option AS c
       ON c.variation_id = b.id
       WHERE a.id = ${categoryId}
       GROUP BY b.id, a.name
@@ -569,6 +570,7 @@ class CreateProductItem {
               variationId: match.variation_id,
               name,
               value: values[index],
+              variationOptionId: match.variation_option_ids[index],
             };
           }
         });
@@ -605,7 +607,7 @@ class CreateProductItem {
     const options = validProducts.map(({ variations }) => {
       // variations is an array
       return variations
-        .map((variationObj) => variationObj.variationId)
+        .map((variationObj) => variationObj.variationOptionId)
         .sort()
         .join(",");
     });
@@ -638,7 +640,7 @@ class CreateProductItem {
           const newVariation = await prisma.$queryRaw`
                 SELECT b.id AS id
                 FROM variation AS a
-                LEFT JOIN variation_option AS b
+                INNER JOIN variation_option AS b
                 ON b.variation_id = a.id AND b.value = ${variation.value}
                 WHERE a.id = ${variation.variationId} AND a.name = ${variation.name}
               `;
@@ -667,7 +669,6 @@ class CreateProductItem {
 
     return {
       categoryName: categoryVariations[0].category_name,
-      productOptions: options,
       productConfigs: await Promise.all(updatedProductConfigurations),
     };
   }
@@ -809,21 +810,19 @@ const updateProduct = catchAsync(async (data, image, save) => {
   const updateProductCategoryTransaction = await prismaProducts.$transaction(async (prisma) => {
     let categoryName;
     let productConfigurations;
-    let productOptions
     if (data.categoryId) {
       // check if category has variations which means its valid and see if has all variations for all product items
       // if i can maintain all the product items with at least one variation then i can change the category id
       // if i cant either delete the product items if one remains or throw an error
-      const {
-        categoryName: catName,
-        productOptions: prodOptions,
-        productConfigs,
-      } = await updateNewProduct.updateCategory(prisma, data.categoryId, productId, save);
+      const { categoryName: catName, productConfigs } = await updateNewProduct.updateCategory(
+        prisma,
+        data.categoryId,
+        productId,
+        save
+      );
 
-      console.log(catName, productConfigs);
       productConfigurations = [].concat(...productConfigs);
       categoryName = catName;
-      productOptions = prodOptions
 
       // eslint-disable-next-line no-param-reassign
       data.category_id = data.categoryId;
@@ -847,30 +846,64 @@ const updateProduct = catchAsync(async (data, image, save) => {
 
     // re-generate sku based on current options and current name
     // options and category name only change if categoryId is updated and name only changes if product name is updated
-    let sku;
-    if (data.name && categoryName) {
-      const { sku: productSKU } = updateNewProduct.generateSKU(categoryName, data.name, options);
-    } else if (data.name && !categoryName) {
-      categoryName = await prisma.product_category.findUnique({
-        where: {
-          id: result.category_id,
-        },
-        select: {
-          name: true,
-        },
+    let productItems;
+    if (data.name || categoryName) {
+      if (data.name && !categoryName) {
+        categoryName = await prisma.product_category.findUnique({
+          where: {
+            id: result.category_id,
+          },
+          select: {
+            name: true,
+          },
+        });
+        categoryName = categoryName.name;
+      } else if (!data.name && categoryName) {
+        // eslint-disable-next-line no-param-reassign
+        data.name = result.name;
+      }
+
+      // options = based on the result object we are going to check all the variation_options of the product
+      const options = await prisma.$queryRaw`
+        SELECT a.id, array_agg(c.value) AS values, array_agg(d.name) AS names
+        FROM product_item AS a
+        INNER JOIN product_configuration AS b
+        ON b.product_item_id = a.id
+        INNER JOIN variation_option AS c
+        ON c.id = b.variation_option_id
+        INNER JOIN variation AS d
+        ON d.id = c.variation_id
+        WHERE a.product_id = ${result.id}
+        GROUP BY a.id
+      `;
+
+      // re-generate sku(s) for all product items
+      const skuArray = options.map(({ id, names, values }) => {
+        const pItemOptions = {};
+        names.forEach((key, index) => {
+          pItemOptions[key] = values[index];
+        });
+        const { sku } = updateNewProduct.generateSKU(categoryName, data.name, pItemOptions);
+        return {
+          id,
+          sku: sku.join("-"),
+        };
       });
-      categoryName = categoryName.name;
 
-      productOptions =
-
-      const { sku: productSKU } = updateNewProduct.generateSKU(categoryName, data.name, options);
-    } else if (!data.name && categoryName) {
-      // eslint-disable-next-line no-param-reassign
-      data.name = result.name;
+      productItems = await prisma.$queryRaw`
+        UPDATE product_item AS p
+        SET "SKU" = c.sku
+        FROM (VALUES
+          ${Prisma.join(skuArray.map(({ id, sku }) => Prisma.sql`(${id}, ${sku})`))}
+        ) AS c(id, sku)
+        WHERE c.id = p.id
+        RETURNING p.id, p.product_id, "SKU", "QIS", p.images, p.price
+      `;
     }
 
     return {
       product: result,
+      [productItems.length === 1 ? "productItem" : "productItems"]: productItems,
       [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]: productConfigurations,
     };
   });
@@ -894,9 +927,9 @@ const deleteProduct = catchAsync(async (productId) => {
       ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
       array_agg(c.id) AS product_configuration_ids
     FROM product AS a
-    LEFT JOIN product_item AS b
+    INNER JOIN product_item AS b
     ON b.product_id = a.id
-    LEFT JOIN product_configuration AS c
+    INNER JOIN product_configuration AS c
     ON c.product_item_id = b.id
     WHERE a.id = ${productId}
     GROUP BY a.id
@@ -1010,9 +1043,9 @@ const updateProductItem = catchAsync(async (data, images, query) => {
   const productItem = await prismaProducts.$queryRaw`
     SELECT b.id AS product_id, b.name AS product_name, c.id AS category_id, c.name AS category_name
     FROM product_item AS a
-    LEFT JOIN product AS b
+    INNER JOIN product AS b
     ON b.id = a.product_id
-    LEFT JOIN product_category AS c
+    INNER JOIN product_category AS c
     ON c.id = b.category_id
     WHERE a.id = ${productItemId}
   `;

@@ -46,7 +46,7 @@ class Category {
         )
         SELECT a.id, array_agg(b.name) AS names
         FROM product_category AS a
-        LEFT JOIN layer AS b
+        INNER JOIN layer AS b
         ON layer_number = (
           SELECT layer_number
           FROM layer AS c
