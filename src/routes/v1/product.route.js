@@ -12,5 +12,10 @@ router.delete("/delete/:productId", validate(productValidation.deleteProduct), p
 
 router.post("/create/item", anyFile(), validate(productValidation.createProductItem), productController.createProductItem);
 router.patch("/update/item", anyFile(), validate(productValidation.updateProductItem), productController.updateProductItem);
+router.delete(
+  "/delete/item/:productItemId",
+  validate(productValidation.deleteProductItem),
+  productController.deleteProductItem
+);
 
 module.exports = router;

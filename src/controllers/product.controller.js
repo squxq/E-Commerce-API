@@ -100,10 +100,29 @@ const updateProductItem = catchAsync(async (req, res) => {
   });
 });
 
+/**
+ * @desc Delete Product Item Controller
+ * @param { Object } req
+ * @param { Object } res
+ * @property { String } req.params.productItemId
+ * @property { Boolean } req.query.save
+ * @returns { JSON }
+ */
+const deleteProductItem = catchAsync(async (req, res) => {
+  const result = await productService.deleteProductItem(req.params.productItemId, req.query.save);
+
+  return res.status(httpStatus.OK).json({
+    type: "Success",
+    message: "Product Item deleted successfully",
+    output: result,
+  });
+});
+
 module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
   createProductItem,
   updateProductItem,
+  deleteProductItem,
 };

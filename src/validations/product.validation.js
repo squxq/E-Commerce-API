@@ -146,10 +146,23 @@ const updateProductItem = {
   // }),
 };
 
+const deleteProductItem = {
+  params: Joi.object().keys({
+    productItemId: Joi.string()
+      .required()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Item Id"),
+  }),
+  query: Joi.object().keys({
+    save: Joi.boolean().default(true).label("Save Product"),
+  }),
+};
+
 module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
   createProductItem,
   updateProductItem,
+  deleteProductItem,
 };

@@ -672,6 +672,53 @@ class CreateProductItem {
       productConfigs: await Promise.all(updatedProductConfigurations),
     };
   }
+
+  // delete product
+  async deleteProductTransaction(productId) {
+    const deleteNewProductTransaction = await prismaProducts.$transaction(async (prisma) => {
+      // validate product id
+      const product = await prisma.$queryRaw`
+    SELECT a.id AS product_id,
+      a.image AS product_public_id,
+      array_agg(b.id) AS product_item_ids,
+      ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
+      array_agg(c.id) AS product_configuration_ids
+    FROM product AS a
+    INNER JOIN product_item AS b
+    ON b.product_id = a.id
+    INNER JOIN product_configuration AS c
+    ON c.product_item_id = b.id
+    WHERE a.id = ${productId}
+    GROUP BY a.id
+  `;
+
+      if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
+
+      // delete all product items and their images from cloudinary
+      const productItems = await this.deleteProductItems(prisma, product[0], true);
+
+      // delete product itself
+      const deletedProduct = await prisma.product.delete({
+        where: {
+          id: productId,
+        },
+        select: {
+          id: true,
+          category_id: true,
+          name: true,
+          description: true,
+          image: true,
+        },
+      });
+
+      return {
+        product: deletedProduct,
+        ...productItems,
+      };
+    });
+
+    return deleteNewProductTransaction;
+  }
 }
 
 /**
@@ -914,54 +961,12 @@ const updateProduct = catchAsync(async (data, image, save) => {
 /**
  * @desc Delete a product
  * @param { String } productId
- * @return { Object }
+ * @returns { Object }
  */
 const deleteProduct = catchAsync(async (productId) => {
   const deleteNewProduct = new CreateProductItem();
 
-  // validate product id
-  const product = await prismaProducts.$queryRaw`
-    SELECT a.id AS product_id,
-      a.image AS product_public_id,
-      array_agg(b.id) AS product_item_ids,
-      ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
-      array_agg(c.id) AS product_configuration_ids
-    FROM product AS a
-    INNER JOIN product_item AS b
-    ON b.product_id = a.id
-    INNER JOIN product_configuration AS c
-    ON c.product_item_id = b.id
-    WHERE a.id = ${productId}
-    GROUP BY a.id
-  `;
-
-  if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
-
-  const deleteProductTransaction = await prismaProducts.$transaction(async (prisma) => {
-    // delete all product items and their images from cloudinary
-    const productItems = await deleteNewProduct.deleteProductItems(prisma, product[0], true);
-
-    // delete product itself
-    const deletedProduct = await prisma.product.delete({
-      where: {
-        id: productId,
-      },
-      select: {
-        id: true,
-        category_id: true,
-        name: true,
-        description: true,
-        image: true,
-      },
-    });
-
-    return {
-      deletedProduct,
-      ...productItems,
-    };
-  });
-
-  return deleteProductTransaction;
+  return deleteNewProduct.deleteProductTransaction(productId);
 });
 
 /**
@@ -1102,10 +1107,74 @@ const updateProductItem = catchAsync(async (data, images, query) => {
   return updateProductItemTransaction;
 });
 
+/**
+ * @desc Delete a product item
+ * @param { String } productItemId
+ * @param { Boolean } save
+ * @returns { Object }
+ */
+const deleteProductItem = catchAsync(async (productItemId, save) => {
+  const deleteNewProductItem = new CreateProductItem();
+
+  const deleteProductItemTransaction = await prismaProducts.$transaction(async (prisma) => {
+    // validate product item
+    const validateProductItem = await prisma.$queryRaw`
+    WITH product_item_id AS (
+      SELECT a.id, a.product_id
+      FROM product_item AS a
+      WHERE a.id = ${productItemId}
+    )
+
+    SELECT (SELECT id FROM product_item_id) AS item_id,
+      array_agg(b.id) AS other_items,
+      (SELECT product_id FROM product_item_id) AS product_id
+    FROM product_item AS b
+    WHERE b.product_id = (SELECT product_id FROM product_item_id)
+      AND b.id != (SELECT id FROM product_item_id)
+    `;
+
+    if (validateProductItem.length === 0) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "Product Item not found");
+    }
+
+    // check if there are any more product items and what value does save has
+    if (!validateProductItem[0].other_items) {
+      if (save) {
+        throw new ApiError(
+          httpStatus.BAD_REQUEST,
+          "Its not possible to save the product, due to the fact that this is the only product item left. Change: save=false or add another product item to this product"
+        );
+      }
+
+      // delete the product itself
+      return deleteNewProductItem.deleteProductTransaction(validateProductItem[0].product_id);
+    }
+
+    // delete product configurations
+    const productConfigurations = await prisma.$queryRaw`
+        DELETE FROM product_configuration
+        WHERE product_item_id = ${productItemId}
+        RETURNING id, product_item_id, variation_option_id
+      `;
+
+    // delete product item itself
+    const { productItem } = await deleteNewProductItem.deleteProductItems(prisma, productItemId);
+
+    // verify if product still has product items
+    return {
+      productItem,
+      [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]: productConfigurations,
+    };
+  });
+
+  return deleteProductItemTransaction;
+});
+
 module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
   createProductItem,
   updateProductItem,
+  deleteProductItem,
 };
