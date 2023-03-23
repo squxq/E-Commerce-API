@@ -114,9 +114,9 @@ const updateProductItem = {
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
       .label("Product Item Id"),
-    // produductId: Joi.string()
-    //   .guid({ version: ["uuidv4", "uuidv5"] })
-    //   .label("Product Id"),
+    produductId: Joi.string()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Id"),
     quantity: Joi.number().integer().greater(0).label("Quantity in Stock"),
     price: Joi.object()
       .keys({
@@ -126,24 +126,26 @@ const updateProductItem = {
       .label("Product's price"),
     options: Joi.object().label("Variation Options"),
   }),
-  // files: Joi.array()
-  //   .items(
-  //     Joi.object()
-  //       .keys({
-  //         fieldname: Joi.string().required(),
-  //         originalname: Joi.string(),
-  //         encoding: Joi.string().required(),
-  //         mimetype: Joi.string().required(),
-  //         buffer: Joi.binary().encoding("base64").required(),
-  //         size: Joi.number().required(),
-  //       })
-  //       .required()
-  //       .label("Image")
-  //   )
-  //   .label("Images"),
-  // query: Joi.object().keys({
-  //   images: Joi.string().default("add").valid("add", "replace").label("Add or Replace Images"),
-  // }),
+  files: Joi.array()
+    .items(
+      Joi.object()
+        .keys({
+          fieldname: Joi.string().required(),
+          originalname: Joi.string(),
+          encoding: Joi.string().required(),
+          mimetype: Joi.string().required(),
+          buffer: Joi.binary().encoding("base64").required(),
+          size: Joi.number().required(),
+        })
+        .required()
+        .label("Image")
+    )
+    .label("Images"),
+  query: Joi.object().keys({
+    images: Joi.string().default("add").valid("add", "replace").label("Add or Replace Images"),
+    quantity: Joi.string().default("add").valid("add", "replace").label("Add or Replace Quantity in Stock"),
+    save: Joi.boolean().default(true).label("Save Product Item"),
+  }),
 };
 
 const deleteProductItem = {

@@ -13,6 +13,7 @@ cloudinary.v2.config({
 // Uploads an image to cloudinary
 const uploadImage = catchAsync(async (image, folderName, fileName = null) => {
   const etag = hash(image, { algorithm: "md5" });
+
   // upload options
   const options = {
     folder: `${config.cloud.project ? config.cloud.project : "default-project"}/${folderName}`,

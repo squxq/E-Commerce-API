@@ -499,6 +499,7 @@ class CreateProductItem {
           product_id: true,
           SKU: true,
           QIS: true,
+          images: true,
           price: true,
         },
       });
@@ -678,19 +679,19 @@ class CreateProductItem {
     const deleteNewProductTransaction = await prismaProducts.$transaction(async (prisma) => {
       // validate product id
       const product = await prisma.$queryRaw`
-    SELECT a.id AS product_id,
-      a.image AS product_public_id,
-      array_agg(b.id) AS product_item_ids,
-      ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
-      array_agg(c.id) AS product_configuration_ids
-    FROM product AS a
-    INNER JOIN product_item AS b
-    ON b.product_id = a.id
-    INNER JOIN product_configuration AS c
-    ON c.product_item_id = b.id
-    WHERE a.id = ${productId}
-    GROUP BY a.id
-  `;
+        SELECT a.id AS product_id,
+          a.image AS product_public_id,
+          array_agg(b.id) AS product_item_ids,
+          ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
+          array_agg(c.id) AS product_configuration_ids
+        FROM product AS a
+        INNER JOIN product_item AS b
+        ON b.product_id = a.id
+        INNER JOIN product_configuration AS c
+        ON c.product_item_id = b.id
+        WHERE a.id = ${productId}
+        GROUP BY a.id
+      `;
 
       if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
 
@@ -719,6 +720,43 @@ class CreateProductItem {
 
     return deleteNewProductTransaction;
   }
+
+  // eslint-disable-next-line class-methods-use-this
+  async checkImages(images, productId) {
+    // check for existing images in the product folder
+    const imageArray = await prismaProducts.$queryRaw`
+      SELECT * FROM (
+        SELECT image
+        FROM product
+        WHERE id = ${productId}
+
+      UNION ALL
+
+        SELECT unnest(images)
+        FROM product_item
+        WHERE product_id = ${productId}
+      ) AS a
+    `;
+
+    let newImageArray = Array.from(new Set(imageArray.map((row) => row.image)));
+    const providedImages = images.map((image) => hash(parser(image).content, { algorithm: "md5" }));
+
+    const existingImages = newImageArray.filter(
+      (image) => providedImages.indexOf(image.substring(image.length - 32)) !== -1
+    );
+
+    newImageArray = newImageArray.map((publicId) => publicId.substring(publicId.length - 32));
+    const toUploadHashArray = providedImages.filter((image) => newImageArray.indexOf(image) === -1);
+
+    const toUploadImages = images.filter(
+      (image) => toUploadHashArray.indexOf(hash(parser(image).content, { algorithm: "md5" })) !== -1
+    );
+
+    return {
+      toUpload: toUploadImages,
+      existing: existingImages,
+    };
+  }
 }
 
 /**
@@ -745,9 +783,10 @@ const createProduct = catchAsync(async (data, images) => {
   const formattedPrice = await createNewProduct.checkPrice();
 
   // check for a main image
-  if (images.length < 1) {
+  if (images.length === 0) {
     throw new ApiError(httpStatus.BAD_REQUEST, "No images provided");
   }
+
   let mainImage;
   let hasMain = false;
   if (images.find((image) => image.fieldname === "main")) {
@@ -755,6 +794,10 @@ const createProduct = catchAsync(async (data, images) => {
     images.splice(images.indexOf(mainImage), 1);
     images.unshift(mainImage);
     hasMain = true;
+
+    if (images.length === 1) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "No product item images provided");
+    }
   }
 
   // upload images
@@ -981,7 +1024,10 @@ const deleteProduct = catchAsync(async (productId) => {
 const createProductItem = catchAsync(async (productId, quantity, price, options, images) => {
   const product = await prismaProducts.product.findUnique({
     where: { id: productId },
-    select: { category_id: true }, // product object inside category_id: the actual id
+    select: {
+      category_id: true,
+      name: true,
+    }, // product object inside category_id: the actual id
   });
 
   if (!product) throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
@@ -999,9 +1045,12 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
   if (images.length < 1) {
     throw new ApiError(httpStatus.BAD_REQUEST, "No images provided");
   }
-  const imagesArray = await createNewProductItem.uploadImages(images, null, productId);
+  const { toUpload, existing } = await createNewProductItem.checkImages(images, productId);
+  let imagesArray = await createNewProductItem.uploadImages(toUpload, product.name);
   const productName = imagesArray[imagesArray.length - 1];
   imagesArray.pop();
+
+  imagesArray = [...existing, ...imagesArray];
 
   // SKU - generation === categoryName + productName + productVariationOptions
   const { sku, orderedOptions } = createNewProductItem.generateSKU(categoryName, productName);
@@ -1030,11 +1079,12 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
  * @desc Update a Product Item
  * @param { Object } data
  * @param { Object } images
- * @param { String } query
+ * @param { Object } query
  * @property { String } data.productItemId
  * @returns { Object }
  */
 const updateProductItem = catchAsync(async (data, images, query) => {
+  // query(example): {images: add, qunatity: add}
   const { productItemId } = data;
   // eslint-disable-next-line no-param-reassign
   delete data.productItemId;
@@ -1046,7 +1096,13 @@ const updateProductItem = catchAsync(async (data, images, query) => {
 
   // validate product item id
   const productItem = await prismaProducts.$queryRaw`
-    SELECT b.id AS product_id, b.name AS product_name, c.id AS category_id, c.name AS category_name
+    SELECT b.id AS product_id,
+      b.name AS product_name,
+      c.id AS category_id,
+      c.name AS category_name,
+      a."QIS" AS item_quantity,
+      a.images AS item_images,
+      b.image AS product_image
     FROM product_item AS a
     INNER JOIN product AS b
     ON b.id = a.product_id
@@ -1060,8 +1116,13 @@ const updateProductItem = catchAsync(async (data, images, query) => {
   const updateNewProductItem = new CreateProductItem(data.quantity, data.price, data.options, productItem[0].category_id);
 
   if (data.quantity) {
-    // eslint-disable-next-line no-param-reassign
-    data.QIS = Math.floor(data.quantity);
+    if (query.quantity === "add") {
+      // eslint-disable-next-line no-param-reassign
+      data.QIS = Math.floor(data.quantity) + productItem[0].item_quantity;
+    } else if (query.quantity === "replace") {
+      // eslint-disable-next-line no-param-reassign
+      data.QIS = Math.floor(data.quantity);
+    }
 
     // eslint-disable-next-line no-param-reassign
     delete data.quantity;
@@ -1096,6 +1157,24 @@ const updateProductItem = catchAsync(async (data, images, query) => {
 
     // eslint-disable-next-line no-param-reassign
     delete data.options;
+  }
+
+  if (images.length > 0) {
+    const { toUpload, existing } = await updateNewProductItem.checkImages(images, productItem[0].product_id);
+    let imagesArray = await updateNewProductItem.uploadImages(toUpload, productItem[0].product_name);
+    imagesArray.pop();
+
+    imagesArray = [...existing, ...imagesArray];
+
+    if (query.images === "add") {
+      // add images to the product image array
+      // eslint-disable-next-line no-param-reassign
+      data.images = Array.from(new Set(productItem[0].item_images.concat(imagesArray)));
+    } else if (query.images === "replace") {
+      // replace entirely the product image array
+      // eslint-disable-next-line no-param-reassign
+      data.images = imagesArray;
+    }
   }
 
   const updateProductItemTransaction = await updateNewProductItem.updateProductItemTransaction(
