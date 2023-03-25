@@ -620,10 +620,9 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
  * @desc Update category
  * @param { Object } data
  * @param { Object } imageUpdate
- * @param { Object } query
  * @returns { Object }
  */
-const updateCategory = catchAsync(async (data, imageUpdate, query) => {
+const updateCategory = catchAsync(async (data, imageUpdate) => {
   const updateNewCategory = new Category();
 
   const { categoryId } = data;
@@ -647,19 +646,6 @@ const updateCategory = catchAsync(async (data, imageUpdate, query) => {
     data.image = await updateNewCategory.validateImage(imageUpdate);
   }
 
-  let incompatibilities;
-  if (data.parentId) {
-    if (data.parentId === categoryId) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "A category cannot be the parent of itself");
-    }
-
-    incompatibilities = await updateNewCategory.checkIncompatibilities(query.save, categoryId, data.parentId);
-    // eslint-disable-next-line no-param-reassign
-    data.parent_id = data.parentId !== "null" ? data.parentId : null;
-    // eslint-disable-next-line no-param-reassign
-    delete data.parentId;
-  }
-
   const result = await prismaProducts.product_category.update({
     where: {
       id: categoryId,
@@ -675,7 +661,6 @@ const updateCategory = catchAsync(async (data, imageUpdate, query) => {
 
   return {
     category: result,
-    incompatibilities,
   };
 });
 

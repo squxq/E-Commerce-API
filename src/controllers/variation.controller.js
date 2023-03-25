@@ -31,11 +31,10 @@ const createVariation = catchAsync(async (req, res) => {
  * @property { String } req.body.variationId
  * @property { String } req.body.categoryId
  * @property { String } req.body.name
- * @property { String } req.query.save
  * @returns { JSON }
  */
 const updateVariation = catchAsync(async (req, res) => {
-  const result = await variationService.updateVariation(req.body, req.query.save);
+  const result = await variationService.updateVariation(req.body);
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
@@ -89,11 +88,10 @@ const createVariationOptions = catchAsync(async (req, res) => {
  * @param { Object } res
  * @property { String } req.body.optionId
  * @property { String } req.body.value
- * @property { Boolean } req.query.save
  * @returns { JSON }
  */
 const updateVariationOption = catchAsync(async (req, res) => {
-  const result = await variationService.updateVariationOption(req.body, req.query.save);
+  const result = await variationService.updateVariationOption(req.body);
 
   return res.status(httpStatus.OK).json({
     type: "Success",

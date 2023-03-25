@@ -21,12 +21,6 @@ const updateVariation = {
       .label("Variation Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
     name: Joi.string().label("Name"),
-    categoryId: Joi.string()
-      .label("Category Id")
-      .guid({ version: ["uuidv4", "uuidv5"] }),
-  }),
-  query: Joi.object().keys({
-    save: Joi.boolean().default(true).label("Save Products"),
   }),
 };
 
@@ -61,13 +55,7 @@ const updateVariationOption = {
       .required()
       .label("Option Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
-    variationId: Joi.string()
-      .label("Variation Id")
-      .guid({ version: ["uuidv4", "uuidv5"] }),
     value: Joi.string().label("New option value"),
-  }),
-  query: Joi.object().keys({
-    save: Joi.boolean().default(true).label("Save Products"),
   }),
 };
 

@@ -377,10 +377,9 @@ const createVariation = catchAsync(async (categoryId, name, value, values) => {
 /**
  * @desc Update existing Variation
  * @param { Object } data
- * @param { Boolean } save
  * @returns { Object }
  */
-const updateVariation = catchAsync(async (data, save) => {
+const updateVariation = catchAsync(async (data) => {
   const updateNewVariation = new Variation();
 
   const { variationId } = data;
@@ -396,16 +395,6 @@ const updateVariation = catchAsync(async (data, save) => {
   // eslint-disable-next-line no-param-reassign
   data.name = name;
 
-  let incompatibilities;
-  if (data.categoryId) {
-    incompatibilities = await updateNewVariation.checkCategory(data.categoryId, data.name, save);
-
-    // eslint-disable-next-line no-param-reassign
-    data.category_id = data.categoryId;
-    // eslint-disable-next-line no-param-reassign
-    delete data.categoryId;
-  }
-
   const variation = await prismaProducts.variation.update({
     where: {
       id: variationId,
@@ -420,7 +409,6 @@ const updateVariation = catchAsync(async (data, save) => {
 
   return {
     variation,
-    incompatibilities,
   };
 });
 
@@ -462,10 +450,9 @@ const createVariationOptions = catchAsync(async (variationId, value, values) => 
 /**
  * @desc Update variation option
  * @param { Object } data
- * @param { Boolean } save
  * @returns { Object }
  */
-const updateVariationOption = catchAsync(async (data, save) => {
+const updateVariationOption = catchAsync(async (data) => {
   const updateNewVariationOption = new Variation();
 
   const { optionId } = data;
@@ -485,66 +472,20 @@ const updateVariationOption = catchAsync(async (data, save) => {
     await updateNewVariationOption.checkDuplicateValues(variationId);
   }
 
-  // if variationId is provided
-  if (data.variationId) {
-    // eslint-disable-next-line no-param-reassign
-    data.variation_id = data.variationId;
-    // eslint-disable-next-line no-param-reassign
-    delete data.variationId;
-  }
-
-  let incompatibilities;
-  const option = await prismaProducts.variation_option
-    .update({
-      where: {
-        id: optionId,
-      },
-      data,
-      select: {
-        id: true,
-        variation_id: true,
-        value: true,
-      },
-    })
-    .catch(async (err) => {
-      // if error is a unique constraint violation we will delete the variation option and update this one to there
-      if (err.code === "P2002" && ["variation_id", "value"].every((value) => err.meta.target.includes(value))) {
-        if (save) throw new ApiError(httpStatus.BAD_REQUEST, "Variation option already exists");
-
-        // delete the variation option that is blocking this one to be updated
-        // find the variation option
-        const toDeleteVariationOption = await prismaProducts.$queryRaw`
-          SELECT id
-          FROM variation_option
-          WHERE variation_id = ${data.variation_id} AND value = (
-            SELECT value
-            FROM variation_option
-            WHERE id = ${optionId}
-          )
-        `;
-
-        incompatibilities = await updateNewVariationOption.deleteValidation(null, save, toDeleteVariationOption[0].id);
-
-        return prismaProducts.variation_option
-          .update({
-            where: { id: optionId },
-            data,
-            select: {
-              id: true,
-              variation_id: true,
-              value: true,
-            },
-          })
-          .catch((error) => {
-            throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, error.message, false);
-          });
-      }
-      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong please try again", false);
-    });
+  const option = await prismaProducts.variation_option.update({
+    where: {
+      id: optionId,
+    },
+    data,
+    select: {
+      id: true,
+      variation_id: true,
+      value: true,
+    },
+  });
 
   return {
     variationOption: option,
-    incompatibilities,
   };
 });
 

@@ -898,28 +898,6 @@ const updateProduct = catchAsync(async (data, image, save) => {
   }
 
   const updateProductCategoryTransaction = await prismaProducts.$transaction(async (prisma) => {
-    let categoryName;
-    let productConfigurations;
-    if (data.categoryId) {
-      // check if category has variations which means its valid and see if has all variations for all product items
-      // if i can maintain all the product items with at least one variation then i can change the category id
-      // if i cant either delete the product items if one remains or throw an error
-      const { categoryName: catName, productConfigs } = await updateNewProduct.updateCategory(
-        prisma,
-        data.categoryId,
-        productId,
-        save
-      );
-
-      productConfigurations = [].concat(...productConfigs);
-      categoryName = catName;
-
-      // eslint-disable-next-line no-param-reassign
-      data.category_id = data.categoryId;
-      // eslint-disable-next-line no-param-reassign
-      delete data.categoryId;
-    }
-
     const result = await prismaProducts.product.update({
       where: {
         id: productId,
@@ -1183,7 +1161,9 @@ const updateProductItem = catchAsync(async (data, images, query) => {
     variationsIds
   );
 
-  return updateProductItemTransaction;
+  return {
+    ...updateProductItemTransaction,
+  };
 });
 
 /**

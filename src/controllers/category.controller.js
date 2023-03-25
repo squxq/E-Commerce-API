@@ -35,11 +35,10 @@ const createCategory = catchAsync(async (req, res) => {
  * @property { String } req.body.name
  * @property { String } req.body.description
  * @property { Object } req.file
- * @property { Object } req.query
  * @returns { JSON }
  */
 const updateCategory = catchAsync(async (req, res) => {
-  const result = await categoryService.updateCategory(req.body, req.file, req.query);
+  const result = await categoryService.updateCategory(req.body, req.file);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
