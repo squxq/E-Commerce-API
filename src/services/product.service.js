@@ -1,4 +1,5 @@
 const hash = require("object-hash");
+const { v4: uuidv4 } = require("uuid");
 const httpStatus = require("http-status");
 const { Prisma } = require("@prisma/client");
 const catchAsync = require("../utils/catchAsync");
@@ -19,12 +20,25 @@ class CreateProductItem {
   }
 
   // eslint-disable-next-line class-methods-use-this
+  formatName(name) {
+    return encodeURIComponent(
+      name
+        .trim()
+        .toLowerCase()
+        .split(" ")
+        .join("_")
+        .replace(/[^a-zA-Z0-9-_]/g, "")
+    );
+  }
+
+  // eslint-disable-next-line class-methods-use-this
   createSKU(str) {
     if (str.trim().indexOf(" ") === -1) {
-      return str.trim().substring(0, 2).toUpperCase();
+      return str.trim().replace(/-/g, "").substring(0, 2).toUpperCase();
     }
     return str
       .trim()
+      .replace(/-/g, "_")
       .split(" ")
       .map((word) => {
         return word.charAt(0).toUpperCase();
@@ -51,7 +65,8 @@ class CreateProductItem {
       ORDER BY c.name ASC
     `;
 
-    if (allowedOptions.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Category doesnt have any variations");
+    if (allowedOptions.length === 0)
+      throw new ApiError(httpStatus.NOT_FOUND, `Category ${this.categoryId} doesnt have any variations!`);
 
     // validate options object
     Object.entries(this.options).forEach(([key, value]) => {
@@ -60,14 +75,14 @@ class CreateProductItem {
           if (!option.values.includes(value)) {
             throw new ApiError(
               httpStatus.BAD_REQUEST,
-              `Wrong variation option provided for: ${key}, value: ${value} does not exist`
+              `Wrong variation option provided for: ${key}, value: ${value} does not exist!`
             );
           }
         }
         return option.name === key;
       });
 
-      if (!exists) throw new ApiError(httpStatus.BAD_REQUEST, `Variation ${key} does not exist`);
+      if (!exists) throw new ApiError(httpStatus.BAD_REQUEST, `Variation ${key} does not exist!`);
     });
 
     return allowedOptions[0].category_name;
@@ -93,11 +108,11 @@ class CreateProductItem {
       );
       return { currency, fxRate };
     }).catch(() => {
-      throw new ApiError(httpStatus.BAD_REQUEST, `${this.price.currency} is not a valid currency`);
+      throw new ApiError(httpStatus.BAD_REQUEST, `${this.price.currency} is not a valid currency!`);
     });
 
     if (result.currency === null) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid currency provided");
+      throw new ApiError(httpStatus.BAD_REQUEST, "Invalid currency provided!");
     }
 
     let exchangeRate;
@@ -113,7 +128,7 @@ class CreateProductItem {
 
     formattedPrice = Math.round(Math.round((formattedPrice * exchangeRate + Number.EPSILON) * 10) / 10);
 
-    if (formattedPrice < 0) throw new ApiError(httpStatus.BAD_REQUEST, "Price must be greater than 0");
+    if (formattedPrice < 0) throw new ApiError(httpStatus.BAD_REQUEST, "Price must be greater than 0!");
 
     return formattedPrice;
   }
@@ -179,7 +194,7 @@ class CreateProductItem {
 
     otherConfigurations.forEach((configuration) => {
       if (configuration.join(",") === variationsIds.join(",")) {
-        throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options");
+        throw new ApiError(httpStatus.BAD_REQUEST, "Different product items cannot have the same variation options.");
       }
     });
 
@@ -188,23 +203,23 @@ class CreateProductItem {
 
   // eslint-disable-next-line class-methods-use-this
   async createProductConfigurations(prisma, variationsIds, productItemId) {
-    const configurationPromises = variationsIds.map(async (id) =>
-      prisma.product_configuration.create({
-        data: {
-          product_item_id: productItemId,
-          variation_option_id: id,
-        },
-        select: {
-          id: true,
-          product_item_id: true,
-          variation_option_id: true,
-        },
-      })
-    );
+    const date = Date.now();
 
-    const createProductConfiguration = await Promise.all(configurationPromises);
+    const valuesParams = variationsIds.map((id) => [uuidv4(), productItemId, id, date]);
 
-    return createProductConfiguration;
+    const configurations = await prisma.$queryRaw`
+      INSERT INTO "product_configuration" ("id", "product_item_id", "variation_option_id", "updatedAt")
+      VALUES ${Prisma.join(
+        valuesParams.map((row) => {
+          // eslint-disable-next-line no-param-reassign
+          row[row.length - 1] = Prisma.sql`to_timestamp(${row[row.length - 1]} / 1000)`;
+          return Prisma.sql`(${Prisma.join(row)})`;
+        })
+      )}
+      RETURNING id, product_item_id, variation_option_id
+    `;
+
+    return configurations;
   }
 
   // createItemTransaction
@@ -245,7 +260,7 @@ class CreateProductItem {
     return product.name;
   }
 
-  async uploadImages(images, productName = null, productId = null, buffer = null, main = false) {
+  async uploadImages(images, productName = null, productId = null, buffer = null, main = false, categoryName = null) {
     if (!productName) {
       if (productId) {
         // eslint-disable-next-line no-param-reassign
@@ -259,16 +274,9 @@ class CreateProductItem {
       }
     }
 
-    const formattedName = encodeURIComponent(
-      productName
-        .trim()
-        .toLowerCase()
-        .split(" ")
-        .join("_")
-        .replace(/[^a-zA-Z0-9-_]/g, "")
-    );
+    const formattedName = this.formatName(productName);
 
-    const folder = `Products/${formattedName}`;
+    const folder = `Products/${this.formatName(categoryName)}-${formattedName}`;
 
     // if images is an array
     if (images) {
@@ -316,7 +324,6 @@ class CreateProductItem {
 
   // validate single image
   async validateImage(image, productId, productName) {
-    // file is not empty because we checked it in updateProduct
     const { content: buffer } = parser(image);
 
     const etag = hash(buffer, { algorithm: "md5" });
@@ -700,7 +707,7 @@ class CreateProductItem {
         GROUP BY t.product_id, t.product_public_id, t.product_item_ids, t.product_configuration_ids
       `;
 
-      if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
+      if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, `Product: ${productId} not found`);
 
       // delete all product items and their images from cloudinary
       const productItems = await this.deleteProductItems(prisma, product[0], true);
@@ -780,8 +787,18 @@ class CreateProductItem {
  */
 const createProduct = catchAsync(async (data, images) => {
   const { categoryId, name, description, quantity, price, options } = data;
-  // instantiate CreateProductItem class
   const createNewProduct = new CreateProductItem(quantity, price, options, categoryId);
+
+  // check name
+  const names = await prismaProducts.$queryRaw`
+    SELECT name AS name
+    FROM product
+    WHERE category_id = ${categoryId}
+  `;
+
+  if (names.find((existingName) => createNewProduct.formatName(existingName.name) === createNewProduct.formatName(name))) {
+    throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${name} is already in use.`);
+  }
 
   // check the allowed options for product configuration
   const categoryName = await createNewProduct.checkOptions();
@@ -791,7 +808,7 @@ const createProduct = catchAsync(async (data, images) => {
 
   // check for a main image
   if (images.length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "No images provided");
+    throw new ApiError(httpStatus.BAD_REQUEST, "No images provided!");
   }
 
   let mainImage;
@@ -803,12 +820,12 @@ const createProduct = catchAsync(async (data, images) => {
     hasMain = true;
 
     if (images.length === 1) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "No product item images provided");
+      throw new ApiError(httpStatus.BAD_REQUEST, "No product item images provided!");
     }
   }
 
   // upload images
-  const imagesArray = await createNewProduct.uploadImages(images, name);
+  const imagesArray = await createNewProduct.uploadImages(images, name, null, null, false, categoryName);
   const mainPublicId = imagesArray[0];
   if (hasMain) imagesArray.shift();
   imagesArray.pop();
@@ -835,7 +852,10 @@ const createProduct = catchAsync(async (data, images) => {
       })
       .catch((err) => {
         if (err.code === "P2002" && ["category_id", "name"].every((element) => err.meta.target.includes(element))) {
-          throw new ApiError(httpStatus.BAD_REQUEST, "A product with this name already exists");
+          throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            `Duplicate product name provided! ${createNewProductTransaction.name} is already in use.`
+          );
         }
 
         throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err.message, false);
@@ -875,7 +895,7 @@ const updateProduct = catchAsync(async (data, image) => {
 
   // validate data object for something to update
   if (!image && Object.keys(data).length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
   }
 
   // validate product id
@@ -885,15 +905,19 @@ const updateProduct = catchAsync(async (data, image) => {
     },
     select: {
       name: true,
+      image: true,
     },
   });
 
-  if (!product) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
+  if (!product) throw new ApiError(httpStatus.BAD_REQUEST, `Product: ${productId} not found!`);
   const { name } = product;
 
-  if (data.name && data.name !== name) {
+  if (data.name) {
+    if (updateNewProduct.formatName(data.name) === updateNewProduct.formatName(name)) {
+      throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${data.name} is already in use.`);
+    }
     // eslint-disable-next-line no-param-reassign
-    data.name = name;
+    delete data.name;
   }
 
   // validate image
@@ -918,77 +942,40 @@ const updateProduct = catchAsync(async (data, image) => {
       },
     });
 
-    let categoryName = await prisma.product_category.findUnique({
-      where: {
-        id: result.category_id,
-      },
-      select: {
-        name: true,
-      },
-    });
-
-    categoryName = categoryName.name;
-
-    // re-generate sku based on current options and current name
-    // options and category name only change if categoryId is updated and name only changes if product name is updated
-    let productItems;
-    if (data.name || categoryName) {
-      if (data.name && !categoryName) {
-        categoryName = await prisma.product_category.findUnique({
-          where: {
-            id: result.category_id,
-          },
-          select: {
-            name: true,
-          },
-        });
-        categoryName = categoryName.name;
-      } else if (!data.name && categoryName) {
-        // eslint-disable-next-line no-param-reassign
-        data.name = result.name;
-      }
-
-      // options = based on the result object we are going to check all the variation_options of the product
-      const options = await prisma.$queryRaw`
-        SELECT a.id, array_agg(c.value) AS values, array_agg(d.name) AS names
-        FROM product_item AS a
-        INNER JOIN product_configuration AS b
-        ON b.product_item_id = a.id
-        INNER JOIN variation_option AS c
-        ON c.id = b.variation_option_id
-        INNER JOIN variation AS d
-        ON d.id = c.variation_id
-        WHERE a.product_id = ${result.id}
-        GROUP BY a.id
+    if (data.image) {
+      const newPublicId = `${product.image.substring(0, product.image.lastIndexOf("/") + 1)}${product.image
+        .substring(product.image.lastIndexOf("/") + 1)
+        .replace("main_", "")}`;
+      // if the old main image is not used no more in any product item delete it in cloudinary
+      const itemImages = await prisma.$queryRaw`
+        SELECT id
+        FROM product_item
+        WHERE ${newPublicId} = ANY(images)
       `;
 
+      if (itemImages.length === 0) {
+        await deleteImage(newPublicId);
+      }
+    }
+
+    let productItems;
+    if (data.name) {
       // re-generate sku(s) for all product items
-      const skuArray = options.map(({ id, names, values }) => {
-        const pItemOptions = {};
-        names.forEach((key, index) => {
-          pItemOptions[key] = values[index];
-        });
-        const { sku } = updateNewProduct.generateSKU(categoryName, data.name, pItemOptions);
-        return {
-          id,
-          sku: sku.join("-"),
-        };
-      });
+      // for all product items that have product_id === productId
+      // change sku from 1st "-" to 2nd "-" with createSKU(data.name)
+      const newSKU = updateNewProduct.createSKU(data.name);
 
       productItems = await prisma.$queryRaw`
-        UPDATE product_item AS p
-        SET "SKU" = c.sku
-        FROM (VALUES
-          ${Prisma.join(skuArray.map(({ id, sku }) => Prisma.sql`(${id}, ${sku})`))}
-        ) AS c(id, sku)
-        WHERE c.id = p.id
-        RETURNING p.id, p.product_id, "SKU", "QIS", p.images, p.price
-      `;
+          UPDATE product_item AS p
+          SET "SKU" = regexp_replace("SKU", split_part("SKU", '-', 2), ${newSKU})
+          WHERE p.product_id = ${productId}
+          RETURNING p.id, p.product_id, "SKU", "QIS", p.images, p.price
+        `;
     }
 
     return {
       product: result,
-      [productItems.length === 1 ? "productItem" : "productItems"]: productItems,
+      [productItems && (productItems.length === 1 ? "productItem" : "productItems")]: productItems,
     };
   });
 
@@ -1024,7 +1011,7 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
     }, // product object inside category_id: the actual id
   });
 
-  if (!product) throw new ApiError(httpStatus.NOT_FOUND, "Product not found");
+  if (!product) throw new ApiError(httpStatus.NOT_FOUND, `Product: ${productId} not found!`);
 
   // Initialize createNewProductItem class
   const createNewProductItem = new CreateProductItem(quantity, price, options, product.category_id);
@@ -1037,10 +1024,11 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
 
   // upload images
   if (images.length < 1) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "No images provided");
+    throw new ApiError(httpStatus.BAD_REQUEST, "No images provided!");
   }
+
   const { toUpload, existing } = await createNewProductItem.checkImages(images, productId);
-  let imagesArray = await createNewProductItem.uploadImages(toUpload, product.name);
+  let imagesArray = await createNewProductItem.uploadImages(toUpload, product.name, null, null, false, categoryName);
   const productName = imagesArray[imagesArray.length - 1];
   imagesArray.pop();
 
@@ -1085,7 +1073,7 @@ const updateProductItem = catchAsync(async (data, images, query) => {
 
   // validate data object for something to update
   if (images.length === 0 && Object.keys(data).length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
   }
 
   // validate product item id
@@ -1105,7 +1093,7 @@ const updateProductItem = catchAsync(async (data, images, query) => {
     WHERE a.id = ${productItemId}
   `;
 
-  if (productItem.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Product Item not found");
+  if (productItem.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Product Item: ${productItemId} not found`);
 
   const updateNewProductItem = new CreateProductItem(data.quantity, data.price, data.options, productItem[0].category_id);
 
@@ -1155,7 +1143,14 @@ const updateProductItem = catchAsync(async (data, images, query) => {
 
   if (images.length > 0) {
     const { toUpload, existing } = await updateNewProductItem.checkImages(images, productItem[0].product_id);
-    let imagesArray = await updateNewProductItem.uploadImages(toUpload, productItem[0].product_name);
+    let imagesArray = await updateNewProductItem.uploadImages(
+      toUpload,
+      productItem[0].product_name,
+      null,
+      null,
+      false,
+      productItem[0].category_name
+    );
     imagesArray.pop();
 
     imagesArray = [...existing, ...imagesArray];
@@ -1209,7 +1204,7 @@ const deleteProductItem = catchAsync(async (productItemId, save) => {
     `;
 
     if (validateProductItem.length === 0) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Product Item not found");
+      throw new ApiError(httpStatus.BAD_REQUEST, `Product Item: ${productItemId} not found!`);
     }
 
     // check if there are any more product items and what value does save has
@@ -1217,7 +1212,7 @@ const deleteProductItem = catchAsync(async (productItemId, save) => {
       if (save) {
         throw new ApiError(
           httpStatus.BAD_REQUEST,
-          "Its not possible to save the product, due to the fact that this is the only product item left. Change: save=false or add another product item to this product"
+          "Its not possible to save the product, due to the fact that this is the only product item left. Change: save=false or add another product item to this product."
         );
       }
 

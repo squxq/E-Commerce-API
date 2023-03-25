@@ -55,7 +55,7 @@ const updateVariationOption = {
       .required()
       .label("Option Id")
       .guid({ version: ["uuidv4", "uuidv5"] }),
-    value: Joi.string().label("New option value"),
+    value: Joi.string().label("New Variation Option value"),
   }),
 };
 

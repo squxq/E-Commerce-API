@@ -15,7 +15,7 @@ const createProduct = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: req.polyglot.t("successfulProductCreate"),
+    message: req.polyglot.t("successProductCreate"),
     output: result,
   });
 });
@@ -27,15 +27,14 @@ const createProduct = catchAsync(async (req, res) => {
  * @property { Object } req.body
  * @property { String } req.productId
  * @property { Object } req.file
- * @property { Boolean } req.query.save
  * @returns { JSON }
  */
 const updateProduct = catchAsync(async (req, res) => {
-  const result = await productService.updateProduct(req.body, req.file, req.query.save);
+  const result = await productService.updateProduct(req.body, req.file);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Product updated successfully",
+    message: req.polyglot.t("successProductUpdate"),
     output: result,
   });
 });
@@ -52,7 +51,7 @@ const deleteProduct = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Product deleted successfully",
+    message: req.polyglot.t("successProductDelete"),
     output: result,
   });
 });
@@ -75,7 +74,7 @@ const createProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: req.polyglot.t("successfulProductCreate"),
+    message: req.polyglot.t("successfulProductItemCreate"),
     output: result,
   });
 });
@@ -94,7 +93,7 @@ const updateProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Product Item successfully updated",
+    message: req.polyglot.t("successfulProductItemUpdate"),
     output: result,
   });
 });
@@ -112,7 +111,7 @@ const deleteProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Product Item deleted successfully",
+    message: req.polyglot.t("successfulProductItemDelete"),
     output: result,
   });
 });

@@ -19,7 +19,7 @@ const createVariation = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: "Variation created successfully",
+    message: req.polyglot.t("successVariationCreate"),
     output: result,
   });
 });
@@ -36,9 +36,9 @@ const createVariation = catchAsync(async (req, res) => {
 const updateVariation = catchAsync(async (req, res) => {
   const result = await variationService.updateVariation(req.body);
 
-  return res.status(httpStatus.CREATED).json({
+  return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Variation updated successfully",
+    message: req.polyglot.t("successVariationUpdate"),
     output: result,
   });
 });
@@ -56,7 +56,7 @@ const deleteVariation = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Variation deleted successfully",
+    message: req.polyglot.t("successVariationDelete"),
     output: result,
   });
 });
@@ -77,7 +77,7 @@ const createVariationOptions = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: "Variation option(s) successfully created",
+    message: req.polyglot.t("successVariationOptionCreate"),
     output: result,
   });
 });
@@ -95,7 +95,7 @@ const updateVariationOption = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Variation option successfully updated",
+    message: req.polyglot.t("successVariationOptionUpdate"),
     output: result,
   });
 });
@@ -113,7 +113,7 @@ const deleteVariationOptions = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Variation option successfully deleted",
+    message: req.polyglot.t("successVariationOptionDelete"),
     output: result,
   });
 });

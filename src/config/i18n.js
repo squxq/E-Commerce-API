@@ -2,7 +2,21 @@
 
 const messages = {
   en: {
-    successCategoryCreate: "Category created successfully",
+    successCategoryCreate: "Category successfully created.",
+    successCategoryUpdate: "Category successfully updated.",
+    successCategoryDelete: "Category successfully deleted.",
+    successVariationCreate: "Variation successfully created.",
+    successVariationUpdate: "Variation successfully updated.",
+    successVariationDelete: "Variation successfully deleted.",
+    successVariationOptionCreate: "Variation Option(s) successfully created.",
+    successVariationOptionUpdate: "Variation Option successfully updated.",
+    successVariationOptionDelete: "Variation Option successfully deleted.",
+    successProductCreate: "Product successfully created.",
+    successProductUpdate: "Product successfully updated.",
+    successProductDelete: "Product successfully deleted.",
+    successProductItemCreate: "Product Item successfully created.",
+    successProductItemUpdate: "Product Item successfully updated.",
+    successProductItemDelete: "Product Item successfully deleted.",
   },
   // en: {
   //   profileImageRequired: "Profile image ss required, please upload an image!",

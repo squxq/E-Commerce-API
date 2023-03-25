@@ -12,7 +12,7 @@ class Variation {
   }
 
   // check if the category is valid
-  async checkCategory(id = null, name = null, save = null) {
+  async checkCategory(id = null, name = null) {
     const checkCategoryQuery = await prismaProducts.$queryRaw`
       SELECT *
       FROM (
@@ -36,29 +36,20 @@ class Variation {
       ON TRUE
     `;
 
-    if (checkCategoryQuery.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
+    if (checkCategoryQuery.length === 0)
+      throw new ApiError(httpStatus.NOT_FOUND, `No category: ${id || this.categoryId} was found!`);
 
     if (!checkCategoryQuery[0].ids.includes(id || this.categoryId))
-      throw new ApiError(httpStatus.BAD_REQUEST, "Category is not valid");
+      throw new ApiError(httpStatus.BAD_REQUEST, `Category: ${id || this.categoryId} is not valid!`);
 
     if (checkCategoryQuery[0].names.includes(name || this.name)) {
-      if (save || !name)
-        throw new ApiError(httpStatus.BAD_REQUEST, `Variation name (${name || this.name}) is already in use`);
-      // if save is false we want to find the existing variation that has the same name and the same category id to then delete it
-      const toDeleteVariation = await prismaProducts.$queryRaw`
-        SELECT id
-        FROM variation
-        WHERE category_id = ${id} AND name = ${name}
-      `;
-
-      // delete the variation
-      return this.deleteValidation(toDeleteVariation[0].id, save);
+      throw new ApiError(httpStatus.BAD_REQUEST, `Variation name (${name || this.name}) is already in use!`);
     }
   }
 
   // check if value(s) is/are valid
   checkValues(value, values) {
-    if (!value && !values) throw new ApiError(httpStatus.BAD_REQUEST, "At least one value is required");
+    if (!value && !values) throw new ApiError(httpStatus.BAD_REQUEST, "At least one value is required!");
 
     const newValues = new Set();
 
@@ -108,11 +99,11 @@ class Variation {
       GROUP BY a.id
     `;
 
-    if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Invalid variation provided");
+    if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Invalid variation: ${variationId} provided!`);
 
     this.values.forEach((value) => {
       if (result[0].values.includes(value)) {
-        throw new ApiError(httpStatus.BAD_REQUEST, "Variation option already exists");
+        throw new ApiError(httpStatus.BAD_REQUEST, `Variation option: ${value} already exists!`);
       }
     });
   }
@@ -125,7 +116,7 @@ class Variation {
       WHERE id = ${variationId}
     `;
 
-    if (variation.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Variation not found");
+    if (variation.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Variation ${variationId} not found!`);
 
     this.categoryId = variation[0].category_id;
 
@@ -284,7 +275,7 @@ class Variation {
 
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      `Products cant be saved, Change: save=false or add another variation option to the following products: ${productItemIds}`
+      `Products cant be saved! Change: save=false or add another variation option to the following products: ${productItemIds}.`
     );
   }
 
@@ -297,7 +288,7 @@ class Variation {
       WHERE a.id = ${optionId}
     `;
 
-    if (!option) throw new ApiError(httpStatus.NOT_FOUND, "Variation option not found");
+    if (!option) throw new ApiError(httpStatus.NOT_FOUND, `Variation option: ${optionId} not found!`);
 
     this.optionId = optionId;
 
@@ -306,9 +297,6 @@ class Variation {
 
   // delete validation
   async deleteValidation(variationId, save, optionId) {
-    if (!variationId && !optionId)
-      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong please try again", false);
-
     if (variationId) {
       // validate variation
       await this.validateVariation(variationId);
@@ -341,8 +329,6 @@ class Variation {
  */
 const createVariation = catchAsync(async (categoryId, name, value, values) => {
   const createNewVariation = new Variation(categoryId, name);
-  // before creating we need to check if the category is valid which means that the category exists and is not parent of any existing category
-
   // check if the categoryId is valid
   await createNewVariation.checkCategory();
 
@@ -387,7 +373,7 @@ const updateVariation = catchAsync(async (data) => {
   delete data.variationId;
 
   // validate data to update
-  if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+  if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
 
   // validate variationId and name if is provided
   const { variationName: name } = await updateNewVariation.validateVariation(variationId, data.name);
@@ -460,7 +446,7 @@ const updateVariationOption = catchAsync(async (data) => {
   delete data.optionId;
 
   // validate data to update
-  if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+  if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
 
   // check optionId
   const variationId = await updateNewVariationOption.validateOption(optionId);

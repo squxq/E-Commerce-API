@@ -1,7 +1,6 @@
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
 const { categoryService } = require("../services");
-// const ApiError = require("../utils/ApiError");
 
 /**
  * @desc Create New Category Controller
@@ -31,7 +30,6 @@ const createCategory = catchAsync(async (req, res) => {
  * @param { Object } req
  * @param { Object } res
  * @property { String } req.body.categoryId
- * @property { String } req.body.parentId
  * @property { String } req.body.name
  * @property { String } req.body.description
  * @property { Object } req.file
@@ -42,7 +40,7 @@ const updateCategory = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Category updated successfully",
+    message: req.polyglot.t("successCategoryUpdate"),
     output: result,
   });
 });
@@ -60,7 +58,7 @@ const deleteCategory = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: "Category deleted successfully",
+    message: req.polyglot.t("successCategoryDelete"),
     output: result,
   });
 });

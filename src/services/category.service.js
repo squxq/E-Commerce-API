@@ -13,13 +13,21 @@ class Category {
     this.parentId = parentId;
   }
 
+  // eslint-disable-next-line class-methods-use-this
+  formatName(name) {
+    return encodeURIComponent(
+      name
+        .trim()
+        .toLowerCase()
+        .split(" ")
+        .join("_")
+        .replace(/[^a-zA-Z0-9-_]/g, "")
+    );
+  }
+
   // check name
   async validateName() {
     // check if string starts with number
-    this.categoryName.split("").forEach((word) => {
-      if (word.match(/^\d/))
-        throw new ApiError(httpStatus.BAD_REQUEST, "Category name can't have words starting with numbers");
-    });
 
     // check for duplicate names
     let result;
@@ -58,7 +66,7 @@ class Category {
         GROUP BY a.id
       `;
 
-      if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Parent category not found");
+      if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Parent category: ${this.parentId} not found!`);
     } else {
       result = await prismaProducts.$queryRaw`
         SELECT array_agg(a.name) AS names
@@ -69,8 +77,11 @@ class Category {
       if (!result[0].names) return this.categoryName;
     }
 
-    if (result[0].names.includes(this.categoryName)) {
-      throw new ApiError(httpStatus.BAD_REQUEST, "Duplicate category name provided");
+    if (result[0].names.find((name) => this.formatName(name) === this.formatName(this.categoryName))) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        `Duplicate category name provided! ${this.categoryName} is already in use.`
+      );
     }
 
     return this.categoryName;
@@ -84,7 +95,7 @@ class Category {
         WHERE id = ${categoryId}
       `;
 
-    if (category.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "Category not found");
+    if (category.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Category: ${categoryId} not found!`);
 
     if (!category[0].parent_id) {
       this.parentId = null;
@@ -110,9 +121,6 @@ class Category {
   // check for duplicate images
   // eslint-disable-next-line class-methods-use-this
   async validateImage(file) {
-    // verify if file is empty
-    if (!file) throw new ApiError(httpStatus.BAD_REQUEST, "Category image not provided");
-
     // image buffer
     const { content: imageBuffer } = parser(file);
 
@@ -232,8 +240,8 @@ class Category {
   }
 
   async updateResources(reverse = false, childId = null, newParentId = null) {
-    if (!reverse && !childId)
-      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong when updating resources");
+    // if (!reverse && !childId)
+    //   throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong when updating resources");
 
     const updateResourcesTransaction = await prismaProducts
       .$transaction(async (prisma) => {
@@ -281,11 +289,11 @@ class Category {
         if (err.meta.code === "23505") {
           throw new ApiError(
             httpStatus.BAD_REQUEST,
-            `Resources cant be saved. Change: save=false or change resources data: ${err.meta.message}`
+            `Resources cant be saved. Change: save=false or change resources data: ${err.meta.message}.`
           );
         }
 
-        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}`);
+        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}.`);
       });
 
     return updateResourcesTransaction;
@@ -318,7 +326,7 @@ class Category {
             ${Prisma.join(allChildren.map((row) => Prisma.sql`(${Prisma.join(row)})`))}
           ) AS b(id)
           WHERE b.id = a.id
-          RETURNING a.id, a.parent_id, a.name, a.image, a.description
+          RETURNING a.id, a.parent_id, a.name, a.description, a.image
         `;
         }
 
@@ -333,11 +341,11 @@ class Category {
         if (err.meta.code === "23505") {
           throw new ApiError(
             httpStatus.BAD_REQUEST,
-            `Resources cant be saved. Change: save=false or change resources data: ${err.meta.message}`
+            `Resources cant be saved. Change: save=false or change resources data: ${err.meta.message}.`
           );
         }
 
-        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}`);
+        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}.`);
       });
 
     return updateCategoriesTransaction;
@@ -374,8 +382,6 @@ class Category {
         treeIds = treeIds.map((id) => id.id);
       }
 
-      // delete the tree - not optimal
-      // https://stackoverflow.com/questions/61756075/postgres-variable-for-multiple-delete-statements check tomorrow
       let productConfigurations;
       let productItems;
       let products;
@@ -518,7 +524,7 @@ class Category {
     if (!this.parentId) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
-        "Its not possible to save resources deleting the current category. Change: save=false"
+        "Its not possible to save resources deleting the current category. Change: save=false in order to delete the category."
       );
     }
 
@@ -530,7 +536,7 @@ class Category {
         WHERE parent_id = ${this.parentId} AND id != ${this.categoryId}
         `;
 
-      // if doesnt have siblings
+      // if it doesnt have siblings
       if (siblings.length === 0) {
         return this.updateResources();
       }
@@ -540,7 +546,7 @@ class Category {
         // tree deletion is required
         throw new ApiError(
           httpStatus.BAD_REQUEST,
-          "Its not possible to save resources deleting the current category. Change: save=false"
+          "Its not possible to save resources deleting the current category. Change: save=false in order to delete the category."
         );
       }
     }
@@ -577,7 +583,7 @@ class Category {
 const createCategory = catchAsync(async (categoryName, parentId, description, file, query) => {
   const createNewCategory = new Category(categoryName, parentId);
 
-  // check category name
+  // check category name and parent id
   const name = await createNewCategory.validateName();
 
   // upload image
@@ -595,8 +601,8 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
       id: true,
       parent_id: true,
       name: true,
-      description: true,
       image: true,
+      description: true,
     },
   });
 
@@ -632,7 +638,7 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
 
   // validate data object for something to update
   if (!imageUpdate && Object.keys(data).length === 0) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided");
+    throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
   }
 
   // validate category Id and name update if exists
@@ -641,8 +647,8 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
   // eslint-disable-next-line no-param-reassign
   data.name = name;
 
-  // check for a duplicate image in the db
   if (imageUpdate) {
+    // check for a duplicate image in the db
     // eslint-disable-next-line no-param-reassign
     data.image = await updateNewCategory.validateImage(imageUpdate);
   }
@@ -656,8 +662,8 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
       id: true,
       parent_id: true,
       name: true,
-      description: true,
       image: true,
+      description: true,
     },
   });
 
@@ -673,8 +679,6 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
  * @returns { Object }
  */
 const deleteCategory = catchAsync(async (id, query) => {
-  // delete will not delete unless the category status is deleted - this will create a sort of recycle bin - using something called "soft delete"
-  // check if category exists - and get the category info
   const deleteNewCategory = new Category();
 
   if (query.save) {
