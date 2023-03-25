@@ -86,12 +86,11 @@ const createProductItem = catchAsync(async (req, res) => {
  * @param { Object } res
  * @property { Object } req.body
  * @property { Object } req.files
- * @property { Object } req.query
  * @property { String } req.body.productItemId
  * @returns { JSON }
  */
 const updateProductItem = catchAsync(async (req, res) => {
-  const result = await productService.updateProductItem(req.body, req.files, req.query);
+  const result = await productService.updateProductItem(req.body, req.files);
 
   return res.status(httpStatus.OK).json({
     type: "Success",

@@ -28,7 +28,7 @@ class Variation {
       (
         SELECT c.id AS category_id, array_agg(d.name) AS names
         FROM product_category AS c
-        INNER JOIN variation AS d
+        LEFT JOIN variation AS d
         ON d.category_id = c.id
         WHERE c.id = ${id || this.categoryId}
         GROUP BY c.id
@@ -36,7 +36,7 @@ class Variation {
       ON TRUE
     `;
 
-    if (!checkCategoryQuery[0].category_id) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
+    if (checkCategoryQuery.length === 0) throw new ApiError(httpStatus.NOT_FOUND, "No category was found");
 
     if (!checkCategoryQuery[0].ids.includes(id || this.categoryId))
       throw new ApiError(httpStatus.BAD_REQUEST, "Category is not valid");
@@ -102,7 +102,7 @@ class Variation {
     const result = await prismaProducts.$queryRaw`
       SELECT a.id, array_agg(b.value) AS values
       FROM variation AS a
-      INNER JOIN variation_option AS b
+      LEFT JOIN variation_option AS b
       ON b.variation_id = a.id
       WHERE a.id = ${variationId}
       GROUP BY a.id
@@ -292,7 +292,7 @@ class Variation {
     const option = await prismaProducts.$queryRaw`
       SELECT b.id
       FROM variation_option AS a
-      INNER JOIN variation AS b
+      LEFT JOIN variation AS b
       ON a.variation_id = b.id
       WHERE a.id = ${optionId}
     `;

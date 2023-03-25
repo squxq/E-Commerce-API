@@ -402,7 +402,6 @@ class CreateProductItem {
       );
 
       await Promise.all(imagesPromises);
-
       const productItems = await prisma.$queryRaw`
         DELETE FROM product_item
         WHERE id IN (${Prisma.join(products.product_item_ids)})
@@ -679,18 +678,26 @@ class CreateProductItem {
     const deleteNewProductTransaction = await prismaProducts.$transaction(async (prisma) => {
       // validate product id
       const product = await prisma.$queryRaw`
-        SELECT a.id AS product_id,
-          a.image AS product_public_id,
-          array_agg(b.id) AS product_item_ids,
-          ARRAY(SELECT DISTINCT * FROM unnest(array_agg(b.images))) AS product_item_public_ids,
-          array_agg(c.id) AS product_configuration_ids
-        FROM product AS a
-        INNER JOIN product_item AS b
-        ON b.product_id = a.id
-        INNER JOIN product_configuration AS c
-        ON c.product_item_id = b.id
-        WHERE a.id = ${productId}
-        GROUP BY a.id
+        SELECT product_id,
+          product_public_id,
+          product_item_ids,
+          array_agg(col ORDER BY col) AS product_item_public_ids,
+          product_configuration_ids
+        FROM (
+          SELECT a.id AS product_id,
+              a.image AS product_public_id,
+              array_agg(b.id) AS product_item_ids,
+            unnest(b.images) AS col,
+            array_agg(c.id) AS product_configuration_ids
+          FROM product AS a
+          INNER JOIN product_item AS b
+          ON b.product_id = a.id
+          INNER JOIN product_configuration AS c
+          ON c.product_item_id = b.id
+          WHERE a.id = ${productId}
+          GROUP BY a.id, b.images
+        ) AS t
+        GROUP BY t.product_id, t.product_public_id, t.product_item_ids, t.product_configuration_ids
       `;
 
       if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "Product not found");
@@ -857,11 +864,10 @@ const createProduct = catchAsync(async (data, images) => {
  * @desc Update a Product
  * @param { Object } data
  * @param { Object } image
- * @param { Boolean } save
  * @property { String } data.productId
  * @returns { Object }
  */
-const updateProduct = catchAsync(async (data, image, save) => {
+const updateProduct = catchAsync(async (data, image) => {
   const updateNewProduct = new CreateProductItem();
   const { productId } = data;
   // eslint-disable-next-line no-param-reassign
@@ -898,7 +904,7 @@ const updateProduct = catchAsync(async (data, image, save) => {
   }
 
   const updateProductCategoryTransaction = await prismaProducts.$transaction(async (prisma) => {
-    const result = await prismaProducts.product.update({
+    const result = await prisma.product.update({
       where: {
         id: productId,
       },
@@ -911,6 +917,17 @@ const updateProduct = catchAsync(async (data, image, save) => {
         image: true,
       },
     });
+
+    let categoryName = await prisma.product_category.findUnique({
+      where: {
+        id: result.category_id,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    categoryName = categoryName.name;
 
     // re-generate sku based on current options and current name
     // options and category name only change if categoryId is updated and name only changes if product name is updated
@@ -972,7 +989,6 @@ const updateProduct = catchAsync(async (data, image, save) => {
     return {
       product: result,
       [productItems.length === 1 ? "productItem" : "productItems"]: productItems,
-      [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]: productConfigurations,
     };
   });
 

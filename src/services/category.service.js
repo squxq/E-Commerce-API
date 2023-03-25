@@ -46,7 +46,7 @@ class Category {
         )
         SELECT a.id, array_agg(b.name) AS names
         FROM product_category AS a
-        INNER JOIN layer AS b
+        LEFT JOIN layer AS b
         ON layer_number = (
           SELECT layer_number
           FROM layer AS c
@@ -363,7 +363,7 @@ class Category {
             (
               SELECT this.id, prior.level + 1
               FROM category_data prior
-              INNER JOIN product_category this ON this.parent_id = prior.id
+              LEFT JOIN product_category this ON this.parent_id = prior.id
             )
           )
           SELECT e.id
@@ -596,6 +596,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
       parent_id: true,
       name: true,
       description: true,
+      image: true,
     },
   });
 
@@ -656,6 +657,7 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
       parent_id: true,
       name: true,
       description: true,
+      image: true,
     },
   });
 
