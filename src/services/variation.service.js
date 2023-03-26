@@ -11,6 +11,21 @@ class Variation {
     this.name = name;
   }
 
+  // eslint-disable-next-line class-methods-use-this
+  createSKU(str) {
+    if (str.trim().indexOf(" ") === -1) {
+      return str.trim().replace(/-/g, "").substring(0, 2).toUpperCase();
+    }
+    return str
+      .trim()
+      .replace(/-/g, "_")
+      .split(" ")
+      .map((word) => {
+        return word.charAt(0).toUpperCase();
+      })
+      .join("");
+  }
+
   // check if the category is valid
   async checkCategory(id = null, name = null) {
     const checkCategoryQuery = await prismaProducts.$queryRaw`
@@ -361,18 +376,21 @@ class Variation {
 
   async validateOption(optionId) {
     const option = await prismaProducts.$queryRaw`
-      SELECT b.id
+      SELECT b.id, b.name
       FROM variation_option AS a
       LEFT JOIN variation AS b
       ON a.variation_id = b.id
       WHERE a.id = ${optionId}
     `;
 
-    if (!option) throw new ApiError(httpStatus.NOT_FOUND, `Variation option: ${optionId} not found!`);
+    if (option.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Variation option: ${optionId} not found!`);
 
     this.optionId = optionId;
 
-    return option[0].id;
+    return {
+      variationId: option[0].id,
+      variationName: option[0].name,
+    };
   }
 
   // delete validation
@@ -399,8 +417,62 @@ class Variation {
   }
 
   // change value in all products SKU
-  async changeValueSKU() {
-    // something
+  async changeValueSKU(newValue, optionId, variationName) {
+    let newSKUValue;
+    if (newValue.replace(" ", "").length > 4) {
+      newSKUValue = this.createSKU(newValue);
+    }
+    newSKUValue = newValue.replace(" ", "").toUpperCase();
+
+    // get all the product items that have option_id = optionId
+    const productSKUs = await prismaProducts.$queryRaw`
+      WITH product_item_info AS (
+        SELECT DISTINCT product_item_id AS product_item_id
+        FROM product_configuration
+        WHERE variation_option_id = ${optionId}
+      )
+
+      SELECT a.id AS item_id,
+        "SKU" AS sku,
+        array_agg(b.name ORDER BY b.name ASC) AS variation_names
+      FROM product_item AS a
+      INNER JOIN variation AS b
+      ON b.id IN (
+        SELECT variation_id
+        FROM variation_option
+        WHERE id IN (
+          SELECT variation_option_id
+          FROM product_configuration
+          WHERE product_item_id IN (a.id)
+        )
+      )
+      WHERE a.id IN (SELECT product_item_id FROM product_item_info)
+      GROUP BY a.id, "SKU"
+    `;
+
+    const newSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
+      const newIndex = variationNames.indexOf(variationName);
+      const SKU = sku.split("-");
+      SKU[newIndex + 2] = newSKUValue;
+
+      return [id, SKU.join("-")];
+    });
+
+    const productItems = await prismaProducts.$queryRaw`
+      UPDATE product_item SET
+        "SKU" = v.new_sku
+      FROM (VALUES
+        ${Prisma.join(
+          newSKUArray.map((row) => {
+            return Prisma.sql`(${Prisma.join(row)})`;
+          })
+        )}
+      ) AS v(item_id, new_sku)
+      WHERE id = v.item_id
+      RETURNING id, product_id, "SKU", "QIS", images, price
+    `;
+
+    return productItems;
   }
 }
 
@@ -535,7 +607,7 @@ const updateVariationOption = catchAsync(async (data) => {
   if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
 
   // check optionId
-  const variationId = await updateNewVariationOption.validateOption(optionId);
+  const { variationId, variationName } = await updateNewVariationOption.validateOption(optionId);
 
   let productItems;
   if (data.value) {
@@ -545,7 +617,7 @@ const updateVariationOption = catchAsync(async (data) => {
     await updateNewVariationOption.checkDuplicateValues(variationId);
 
     // change all the SKUs
-    productItems = updateNewVariationOption.changeValueSKU();
+    productItems = await updateNewVariationOption.changeValueSKU(data.value, optionId, variationName);
   }
 
   const option = await prismaProducts.variation_option.update({
@@ -562,6 +634,7 @@ const updateVariationOption = catchAsync(async (data) => {
 
   return {
     variationOption: option,
+    productItems,
   };
 });
 
