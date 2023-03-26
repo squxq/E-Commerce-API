@@ -108,6 +108,81 @@ class Variation {
     });
   }
 
+  // change SKU order
+  async changeOrderSKU(variationId, oldName) {
+    // this.name = variationName
+    // find all product items that have a variation option with variation id === variationId
+    // find all product items variations names
+    const productSKUs = await prismaProducts.$queryRaw`
+      WITH product_item_info AS (
+        SELECT DISTINCT product_item_id AS product_item_id
+        FROM product_configuration
+        WHERE variation_option_id IN (
+          SELECT id
+          FROM variation_option
+          WHERE variation_id = ${variationId}
+        )
+      )
+
+      SELECT a.id AS item_id,
+        "SKU" AS sku,
+        array_agg(b.name ORDER BY b.name ASC) AS variation_names
+      FROM product_item AS a
+      INNER JOIN variation AS b
+      ON b.id IN (
+        SELECT variation_id
+        FROM variation_option
+        WHERE id IN (
+          SELECT variation_option_id
+          FROM product_configuration
+          WHERE product_item_id IN (a.id)
+        )
+      )
+      WHERE a.id IN (SELECT product_item_id FROM product_item_info)
+      GROUP BY a.id, "SKU"
+    `;
+
+    const updateSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
+      const SKU = sku.split("-");
+      const skuArray = SKU.slice(2);
+      let orderedOptions = {};
+      variationNames.forEach((name, index) => {
+        if (name === oldName) {
+          orderedOptions[this.name] = skuArray[index];
+        } else {
+          orderedOptions[name] = skuArray[index];
+        }
+      });
+
+      orderedOptions = Object.keys(orderedOptions)
+        .sort()
+        .reduce((obj, key) => {
+          // eslint-disable-next-line no-undef, no-param-reassign
+          obj[key] = orderedOptions[key];
+          return obj;
+        }, {});
+
+      const newSKU = [...SKU.slice(0, 2), ...Object.values(orderedOptions)].join("-");
+      return [id, newSKU];
+    });
+
+    const productItems = await prismaProducts.$queryRaw`
+      UPDATE product_item SET
+        "SKU" = v.new_sku
+      FROM (VALUES
+        ${Prisma.join(
+          updateSKUArray.map((subArr) => {
+            return Prisma.sql`(${Prisma.join(subArr)})`;
+          })
+        )}
+      ) AS v(item_id, new_sku)
+      WHERE id = v.item_id
+      RETURNING id, product_id, "SKU", "QIS", images, price
+    `;
+
+    return productItems;
+  }
+
   // validate variation and name
   async validateVariation(variationId, variationName = null) {
     const variation = await prismaProducts.$queryRaw`
@@ -120,9 +195,13 @@ class Variation {
 
     this.categoryId = variation[0].category_id;
 
+    let productItems;
     if (variationName && variationName !== variation[0].name) {
       this.name = variationName;
       await this.checkCategory();
+
+      // change order in sku based on current variationName
+      productItems = await this.changeOrderSKU(variation[0].id, variation[0].name);
     } else {
       this.name = variation[0].name;
     }
@@ -131,6 +210,7 @@ class Variation {
 
     return {
       variationName: this.name,
+      productItems,
     };
   }
 
@@ -227,7 +307,7 @@ class Variation {
       `;
 
       return {
-        ...this.deleteVariation(variationOptionIds),
+        ...(await this.deleteVariation(variationOptionIds)),
         incompatibilities: {
           productConfigurations: deleteProductConfigurations,
         },
@@ -317,6 +397,11 @@ class Variation {
     // check for other variations besides the one to be deleted
     return this.deleteProducts(this.optionId ? [this.optionId] : resources[1].resources_ids, save);
   }
+
+  // change value in all products SKU
+  async changeValueSKU() {
+    // something
+  }
 }
 
 /**
@@ -376,7 +461,7 @@ const updateVariation = catchAsync(async (data) => {
   if (Object.keys(data).length === 0) throw new ApiError(httpStatus.BAD_REQUEST, "No data provided!");
 
   // validate variationId and name if is provided
-  const { variationName: name } = await updateNewVariation.validateVariation(variationId, data.name);
+  const { variationName: name, productItems } = await updateNewVariation.validateVariation(variationId, data.name);
 
   // eslint-disable-next-line no-param-reassign
   data.name = name;
@@ -395,6 +480,7 @@ const updateVariation = catchAsync(async (data) => {
 
   return {
     variation,
+    productItems,
   };
 });
 
@@ -451,11 +537,15 @@ const updateVariationOption = catchAsync(async (data) => {
   // check optionId
   const variationId = await updateNewVariationOption.validateOption(optionId);
 
+  let productItems;
   if (data.value) {
     updateNewVariationOption.checkValues(data.value);
 
     // check for existing values
     await updateNewVariationOption.checkDuplicateValues(variationId);
+
+    // change all the SKUs
+    productItems = updateNewVariationOption.changeValueSKU();
   }
 
   const option = await prismaProducts.variation_option.update({
