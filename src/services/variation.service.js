@@ -123,21 +123,30 @@ class Variation {
     });
   }
 
-  // change SKU order
-  async changeOrderSKU(variationId, oldName) {
-    // this.name = variationName
-    // find all product items that have a variation option with variation id === variationId
-    // find all product items variations names
-    const productSKUs = await prismaProducts.$queryRaw`
-      WITH product_item_info AS (
+  // get SKU info
+  // eslint-disable-next-line class-methods-use-this
+  async getSKUInfo(variationOptions = null, variationId = null, multiple = false, productItemIds = null) {
+    return prismaProducts.$queryRaw`
+      ${
+        !productItemIds
+          ? Prisma.sql`WITH product_item_info AS (
         SELECT DISTINCT product_item_id AS product_item_id
         FROM product_configuration
-        WHERE variation_option_id IN (
+        WHERE variation_option_id ${
+          // eslint-disable-next-line no-nested-ternary
+          variationId
+            ? Prisma.sql`IN (
           SELECT id
           FROM variation_option
           WHERE variation_id = ${variationId}
-        )
-      )
+          )`
+            : multiple
+            ? Prisma.sql`IN (${Prisma.join(variationOptions.map)})`
+            : Prisma.sql`= ${variationOptions}`
+        }
+        )`
+          : Prisma.sql``
+      }
 
       SELECT a.id AS item_id,
         "SKU" AS sku,
@@ -153,9 +162,38 @@ class Variation {
           WHERE product_item_id IN (a.id)
         )
       )
-      WHERE a.id IN (SELECT product_item_id FROM product_item_info)
+      WHERE a.id IN (${
+        productItemIds ? Prisma.join(productItemIds) : Prisma.sql`SELECT product_item_id FROM product_item_info`
+      })
       GROUP BY a.id, "SKU"
     `;
+  }
+
+  // update SKUs in product_item
+  // eslint-disable-next-line class-methods-use-this
+  async updateSKUs(array) {
+    return prismaProducts.$queryRaw`
+      UPDATE product_item SET
+        "SKU" = v.new_sku
+      FROM (VALUES
+        ${Prisma.join(
+          array.map((subArr) => {
+            return Prisma.sql`(${Prisma.join(subArr)})`;
+          })
+        )}
+      ) AS v(item_id, new_sku)
+      WHERE id = v.item_id
+      RETURNING id, product_id, "SKU", "QIS", images, price
+    `;
+  }
+
+  // change SKU order
+  async changeOrderSKU(variationId, oldName) {
+    // this.name = variationName
+    // find all product items that have a variation option with variation id === variationId
+    // find all product items variations names
+
+    const productSKUs = await this.getSKUInfo(null, variationId);
 
     const updateSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
       const SKU = sku.split("-");
@@ -181,19 +219,7 @@ class Variation {
       return [id, newSKU];
     });
 
-    const productItems = await prismaProducts.$queryRaw`
-      UPDATE product_item SET
-        "SKU" = v.new_sku
-      FROM (VALUES
-        ${Prisma.join(
-          updateSKUArray.map((subArr) => {
-            return Prisma.sql`(${Prisma.join(subArr)})`;
-          })
-        )}
-      ) AS v(item_id, new_sku)
-      WHERE id = v.item_id
-      RETURNING id, product_id, "SKU", "QIS", images, price
-    `;
+    const productItems = await this.updateSKUs(updateSKUArray);
 
     return productItems;
   }
@@ -289,8 +315,10 @@ class Variation {
     return deleteVariationTransaction;
   }
 
-  async deleteProducts(variationOptionIds, save = null) {
+  async deleteProducts(variationOptionIds, save = null, variationName = null) {
     const toDeleteProducts = [];
+    const toUpdateProducts = [];
+    let productItemsArr;
 
     let productItemIds = await prismaProducts.$queryRaw`
       SELECT product_item_id AS id
@@ -307,7 +335,24 @@ class Variation {
     for (let index = 0; index < productItemIds.length; index += 1) {
       if (productItemIds.indexOf(productItemIds[index], productItemIds.indexOf(productItemIds[index]) + 1) === -1) {
         toDeleteProducts.push(productItemIds[index]);
+      } else {
+        toUpdateProducts.push(productItemIds[index]);
       }
+    }
+
+    // change sku in all uncommon elements from toDeleteProducts and productItemIds
+    if (toUpdateProducts.length > 0) {
+      const productSKUs = await this.getSKUInfo(variationOptionIds, null, false, toUpdateProducts);
+
+      const newSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
+        const SKU = sku.split("-");
+        const toDeleteIndex = variationNames.indexOf(variationName);
+        SKU.splice(toDeleteIndex + 2, 1);
+
+        return [id, SKU.join("-")];
+      });
+
+      productItemsArr = await this.updateSKUs(newSKUArray);
     }
 
     // all the products in toDeleteProducts have only one variation - the one that is going to be deleted
@@ -323,9 +368,8 @@ class Variation {
 
       return {
         ...(await this.deleteVariation(variationOptionIds)),
-        incompatibilities: {
-          productConfigurations: deleteProductConfigurations,
-        },
+        productItems: productItemsArr,
+        productConfigurations: deleteProductConfigurations,
       };
     }
 
@@ -356,14 +400,15 @@ class Variation {
         `;
 
         return {
-          productConfigurations,
-          productItems,
           products: deleteProducts,
+          productItems,
+          productConfigurations,
         };
       });
 
       return {
         ...this.deleteVariation(variationOptionIds),
+        productItems: productItemsArr,
         incompatibilities: deleteProductTree,
       };
     }
@@ -395,12 +440,15 @@ class Variation {
 
   // delete validation
   async deleteValidation(variationId, save, optionId) {
+    let variationName;
     if (variationId) {
       // validate variation
-      await this.validateVariation(variationId);
+      const { variationName: vName } = await this.validateVariation(variationId);
+      variationName = vName;
     } else if (optionId) {
       // validate option and find its variation
-      await this.validateOption(optionId);
+      const { variationName: vName } = await this.validateOption(optionId);
+      variationName = vName;
     }
 
     // check for products connected to this variation
@@ -413,7 +461,7 @@ class Variation {
 
     // delete products if the only variation is the one to be deleted
     // check for other variations besides the one to be deleted
-    return this.deleteProducts(this.optionId ? [this.optionId] : resources[1].resources_ids, save);
+    return this.deleteProducts(this.optionId ? [this.optionId] : resources[1].resources_ids, save, variationName);
   }
 
   // change value in all products SKU
@@ -425,30 +473,7 @@ class Variation {
     newSKUValue = newValue.replace(" ", "").toUpperCase();
 
     // get all the product items that have option_id = optionId
-    const productSKUs = await prismaProducts.$queryRaw`
-      WITH product_item_info AS (
-        SELECT DISTINCT product_item_id AS product_item_id
-        FROM product_configuration
-        WHERE variation_option_id = ${optionId}
-      )
-
-      SELECT a.id AS item_id,
-        "SKU" AS sku,
-        array_agg(b.name ORDER BY b.name ASC) AS variation_names
-      FROM product_item AS a
-      INNER JOIN variation AS b
-      ON b.id IN (
-        SELECT variation_id
-        FROM variation_option
-        WHERE id IN (
-          SELECT variation_option_id
-          FROM product_configuration
-          WHERE product_item_id IN (a.id)
-        )
-      )
-      WHERE a.id IN (SELECT product_item_id FROM product_item_info)
-      GROUP BY a.id, "SKU"
-    `;
+    const productSKUs = await this.getSKUInfo(optionId, null, true);
 
     const newSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
       const newIndex = variationNames.indexOf(variationName);
@@ -458,19 +483,7 @@ class Variation {
       return [id, SKU.join("-")];
     });
 
-    const productItems = await prismaProducts.$queryRaw`
-      UPDATE product_item SET
-        "SKU" = v.new_sku
-      FROM (VALUES
-        ${Prisma.join(
-          newSKUArray.map((row) => {
-            return Prisma.sql`(${Prisma.join(row)})`;
-          })
-        )}
-      ) AS v(item_id, new_sku)
-      WHERE id = v.item_id
-      RETURNING id, product_id, "SKU", "QIS", images, price
-    `;
+    const productItems = await this.updateSKUs(newSKUArray);
 
     return productItems;
   }
