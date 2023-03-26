@@ -5,7 +5,7 @@ const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
 const { prismaProducts } = require("../config/db");
 const parser = require("../utils/parser");
-const { uploadImage, deleteImage } = require("../utils/cloudinary");
+const { uploadImage, deleteImage, updateName, deleteFolder } = require("../utils/cloudinary");
 
 class Category {
   constructor(categoryName, parentId = null) {
@@ -23,6 +23,21 @@ class Category {
         .join("_")
         .replace(/[^a-zA-Z0-9-_]/g, "")
     );
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  createSKU(str) {
+    if (str.trim().indexOf(" ") === -1) {
+      return str.trim().replace(/-/g, "").substring(0, 2).toUpperCase();
+    }
+    return str
+      .trim()
+      .replace(/-/g, "_")
+      .split(" ")
+      .map((word) => {
+        return word.charAt(0).toUpperCase();
+      })
+      .join("");
   }
 
   // check name
@@ -67,6 +82,8 @@ class Category {
       `;
 
       if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Parent category: ${this.parentId} not found!`);
+
+      if (!result[0].names[0]) return this.categoryName;
     } else {
       result = await prismaProducts.$queryRaw`
         SELECT array_agg(a.name) AS names
@@ -77,7 +94,11 @@ class Category {
       if (!result[0].names) return this.categoryName;
     }
 
-    if (result[0].names.find((name) => this.formatName(name) === this.formatName(this.categoryName))) {
+    if (
+      result[0].names.find((name) => {
+        return this.formatName(name) === this.formatName(this.categoryName);
+      })
+    ) {
       throw new ApiError(
         httpStatus.BAD_REQUEST,
         `Duplicate category name provided! ${this.categoryName} is already in use.`
@@ -85,6 +106,132 @@ class Category {
     }
 
     return this.categoryName;
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  async updateImages(imagesArr, formattedName) {
+    // imagesArr = [{id: '', images: ['']}]
+    const imagesPromises = imagesArr.map(async ({ id, images }) => {
+      if (Array.isArray(images)) {
+        const publicIds = images.map(async (image) => {
+          const imageArr = image.split("/");
+          imageArr[imageArr.length - 2] =
+            formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
+          const newName = imageArr.join("/");
+
+          // rename images in cloudinary
+          await updateName(image, newName);
+
+          return newName;
+        });
+
+        const results = await Promise.all(publicIds);
+
+        return [id, results];
+      }
+
+      const imageArr = images.split("/");
+      imageArr[imageArr.length - 2] =
+        formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
+      const newName = imageArr.join("/");
+
+      // rename images in cloudinary
+      await updateName(images, newName);
+      return [id, newName];
+    });
+
+    return Promise.all(imagesPromises);
+  }
+
+  // update SKUs
+  async updateSKUs(categoryId) {
+    const newSKU = this.createSKU(this.categoryName);
+    const formattedName = this.formatName(this.categoryName);
+
+    const udpateProductTransaction = await prismaProducts.$transaction(async (prisma) => {
+      // get all products with category_id = categoryId
+      const products = await prisma.product.findMany({
+        where: {
+          category_id: categoryId,
+        },
+        select: {
+          id: true,
+          name: true,
+          image: true,
+        },
+      });
+
+      // update all product items that have the same category id
+      const productItems = await prisma.$queryRaw`
+        UPDATE product_item AS p
+        SET "SKU" = regexp_replace("SKU", split_part("SKU", '-', 1), ${newSKU})
+        WHERE p.product_id = ANY(${products.map(({ id }) => id)})
+        RETURNING p.id, p.product_id, "SKU", "QIS", p.images, p.price
+      `;
+
+      const productImages = Array.from(
+        new Map(products.map((obj) => [obj.image, { id: obj.id, images: obj.image }])).values()
+      );
+
+      const productItemImages = productItems.map((obj) => {
+        const uniqueValues = obj.images.filter((value, index, self) => {
+          return index === self.indexOf(value);
+        });
+        return { id: obj.id, images: uniqueValues };
+      });
+
+      // update product folders with the new categoryName
+      const mainImagesArray = await this.updateImages(productImages, formattedName);
+
+      const newImagesArray = await this.updateImages(productItemImages, formattedName);
+
+      // delete all the previous images from cloudinary
+      const deleteImages = Array.from(
+        new Set([...productImages.map((obj) => obj.images), [].concat(...productItemImages.map((obj) => obj.images))])
+      ).map(async (image) => deleteImage(image));
+
+      await Promise.all(deleteImages);
+
+      // delete folders from cloudinary
+      const folders = Array.from(
+        new Set(productImages.map(({ images: image }) => image.substring(0, image.lastIndexOf("/"))))
+      ).map(async (folder) => deleteFolder(folder));
+
+      await Promise.all(folders);
+
+      // update images array
+      const newProductItems = await prisma.$queryRaw`
+        UPDATE product_item SET
+          images = v.imagesArr
+        FROM (VALUES
+          ${Prisma.join(
+            newImagesArray.map((row) => {
+              return Prisma.sql`(${Prisma.join(row)})`;
+            })
+          )}
+        ) AS v(itemId, imagesArr)
+        WHERE id = v.itemId
+        RETURNING id, product_id, "SKU", "QIS", images, price
+      `;
+
+      // update main images
+      const newProducts = await prisma.$queryRaw`
+        UPDATE product SET
+          image = v.newImage
+        FROM (VALUES
+          ${Prisma.join(
+            mainImagesArray.map((row) => {
+              return Prisma.sql`(${Prisma.join(row)})`;
+            })
+          )}
+        ) AS v(productId, newImage)
+        WHERE id = v.productId
+        RETURNING id, category_id, name, description, image
+      `;
+
+      return { newProducts, newProductItems };
+    });
+    return udpateProductTransaction;
   }
 
   // validate category starting with getting the parent id
@@ -103,9 +250,13 @@ class Category {
       this.parentId = category[0].parent_id;
     }
 
-    if (categoryName && categoryName !== category[0].name) {
+    let productItems;
+    if (categoryName && this.formatName(categoryName) !== this.formatName(category[0].name)) {
       this.categoryName = categoryName;
       await this.validateName();
+
+      // update product SKUs
+      productItems = await this.updateSKUs(categoryId);
     } else {
       this.categoryName = category[0].name;
     }
@@ -115,6 +266,7 @@ class Category {
     return {
       parentId: this.parentId,
       categoryName: this.categoryName,
+      productItems,
     };
   }
 
@@ -345,7 +497,7 @@ class Category {
           );
         }
 
-        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false. ${err.meta.message}.`);
+        throw new ApiError(httpStatus.BAD_REQUEST, `Resources cant be saved. Change: save=false.`);
       });
 
     return updateCategoriesTransaction;
@@ -371,7 +523,7 @@ class Category {
             (
               SELECT this.id, prior.level + 1
               FROM category_data prior
-              LEFT JOIN product_category this ON this.parent_id = prior.id
+              INNER JOIN product_category this ON this.parent_id = prior.id
             )
           )
           SELECT e.id
@@ -418,6 +570,24 @@ class Category {
           WHERE e.id IN (${Prisma.join(productIds)})
           RETURNING e.id, e.category_id, e.name, e.description, e.image
         `;
+
+        // delete images
+        const imagesArr = Array.from(
+          new Set([...products.map(({ image }) => image)].concat(...productItems.map(({ images }) => images)))
+        ).map(async (image) => {
+          return deleteImage(image);
+        });
+
+        await Promise.all(imagesArr);
+
+        // delete folders
+        const folderPromise = Array.from(
+          new Set(products.map(({ image }) => image.substring(0, image.lastIndexOf("/"))))
+        ).map(async (folder) => {
+          return deleteFolder(folder);
+        });
+
+        await Promise.all(folderPromise);
       }
 
       let variationIds = await prisma.$queryRaw`
@@ -445,33 +615,38 @@ class Category {
       const imagePublicIds = await prisma.$queryRaw`
         SELECT a.image,
         (
-        SELECT COUNT(*)::int FROM
-        (
-          SELECT * FROM product_category AS c
-          WHERE
-          CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
-          / 32 = 1 THEN true ELSE false END
-          LIMIT 2
-        ) AS b
+          SELECT COUNT(*)::int FROM
+          (
+            SELECT * FROM product_category AS c
+            WHERE
+            CASE WHEN (CHAR_LENGTH(c.image) - CHAR_LENGTH(REPLACE(c.image, SUBSTRING(a.image from (CHAR_LENGTH(a.image) - 31)), '')))
+            / 32 = 1 THEN true ELSE false END
+            LIMIT 2
+          ) AS b
         )
         FROM product_category AS a
         WHERE id IN (${Prisma.join(treeIds)})
       `;
 
       const imageCount = {};
-      imagePublicIds.forEach(async ({ image, count }) => {
+      imagePublicIds.map(async ({ image, count }) => {
         if (count === 1) {
-          await deleteImage(image);
-        } else if (image in imageCount) {
+          return deleteImage(image);
+        }
+
+        if (image in imageCount) {
           if (imageCount[image] - 1 === 0) {
-            await deleteImage(image);
-          } else {
-            imageCount[image] -= 1;
+            return deleteImage(image);
           }
+          imageCount[image] -= 1;
         } else {
           imageCount[image] = count - 1;
         }
+
+        return undefined;
       });
+
+      await Promise.all(imagePublicIds);
 
       const categories = await prisma.$queryRaw`
         DELETE FROM product_category AS i
@@ -593,7 +768,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
   let result = await prismaProducts.product_category.create({
     data: {
       parent_id: parentId,
-      name,
+      name: name.trim(),
       image: publicId,
       description,
     },
@@ -642,10 +817,10 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
   }
 
   // validate category Id and name update if exists
-  const { categoryName: name } = await updateNewCategory.validateParent(categoryId, data.name);
+  const { categoryName: name, productItems } = await updateNewCategory.validateParent(categoryId, data.name);
 
   // eslint-disable-next-line no-param-reassign
-  data.name = name;
+  data.name = name.trim();
 
   if (imageUpdate) {
     // check for a duplicate image in the db
@@ -669,6 +844,7 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
 
   return {
     category: result,
+    productItems,
   };
 });
 

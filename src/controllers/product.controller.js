@@ -74,7 +74,7 @@ const createProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
-    message: req.polyglot.t("successfulProductItemCreate"),
+    message: req.polyglot.t("successProductItemCreate"),
     output: result,
   });
 });
@@ -93,7 +93,7 @@ const updateProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: req.polyglot.t("successfulProductItemUpdate"),
+    message: req.polyglot.t("successProductItemUpdate"),
     output: result,
   });
 });
@@ -111,7 +111,7 @@ const deleteProductItem = catchAsync(async (req, res) => {
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: req.polyglot.t("successfulProductItemDelete"),
+    message: req.polyglot.t("successProductItemDelete"),
     output: result,
   });
 });

@@ -53,8 +53,13 @@ const updateName = catchAsync(async (fromPublicId, toPublicId) => {
   return publicId;
 });
 
+const deleteFolder = catchAsync(async (folderName) => {
+  await cloudinary.v2.api.delete_folder(folderName);
+});
+
 module.exports = {
   uploadImage,
   deleteImage,
   updateName,
+  deleteFolder,
 };

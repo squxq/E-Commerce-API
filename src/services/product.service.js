@@ -5,7 +5,7 @@ const { Prisma } = require("@prisma/client");
 const catchAsync = require("../utils/catchAsync");
 const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
-const { uploadImage, updateName, deleteImage } = require("../utils/cloudinary");
+const { uploadImage, updateName, deleteImage, deleteFolder } = require("../utils/cloudinary");
 const parser = require("../utils/parser");
 const convertCurrency = require("../utils/currencyConverter");
 const { Currencies, FxRates } = require("../models");
@@ -712,6 +712,9 @@ class CreateProductItem {
       // delete all product items and their images from cloudinary
       const productItems = await this.deleteProductItems(prisma, product[0], true);
 
+      // delete product folder from cloudinary
+      await deleteFolder(product[0].product_public_id.substring(0, product[0].product_public_id.lastIndexOf("/")));
+
       // delete product itself
       const deletedProduct = await prisma.product.delete({
         where: {
@@ -1093,7 +1096,7 @@ const updateProductItem = catchAsync(async (data, images, query) => {
     WHERE a.id = ${productItemId}
   `;
 
-  if (productItem.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Product Item: ${productItemId} not found`);
+  if (productItem.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Product Item: ${productItemId} not found!`);
 
   const updateNewProductItem = new CreateProductItem(data.quantity, data.price, data.options, productItem[0].category_id);
 
@@ -1230,7 +1233,6 @@ const deleteProductItem = catchAsync(async (productItemId, save) => {
     // delete product item itself
     const { productItem } = await deleteNewProductItem.deleteProductItems(prisma, productItemId);
 
-    // verify if product still has product items
     return {
       productItem,
       [productConfigurations.length === 1 ? "productConfiguration" : "productConfigurations"]: productConfigurations,
