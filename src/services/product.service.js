@@ -771,7 +771,7 @@ const createProduct = catchAsync(async (data, images) => {
     WHERE category_id = ${categoryId}
   `;
 
-  if (names.find((existingName) => createNewProduct.formatName(existingName.name) === createNewProduct.formatName(name))) {
+  if (names.find((existingName) => formatName(existingName.name) === formatName(name))) {
     throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${name} is already in use.`);
   }
 
@@ -888,7 +888,7 @@ const updateProduct = catchAsync(async (data, image) => {
   const { name } = product;
 
   if (data.name) {
-    if (updateNewProduct.formatName(data.name) === updateNewProduct.formatName(name)) {
+    if (formatName(data.name) === formatName(name)) {
       throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${data.name} is already in use.`);
     }
     // eslint-disable-next-line no-param-reassign

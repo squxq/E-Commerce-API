@@ -106,11 +106,24 @@ class Variation {
 
     if (result.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Invalid variation: ${variationId} provided!`);
 
-    this.values.forEach((value) => {
-      if (result[0].values.includes(value)) {
-        throw new ApiError(httpStatus.BAD_REQUEST, `Variation option: ${value} already exists!`);
+    this.values.sort();
+    result[0].values.sort();
+    let i = 0;
+    let j = 0;
+    while (i < this.values.length && j < result[0].values.length) {
+      const formattedValue = formatName(this.values[i]);
+      const formattedValues = formatName(result[0].values[j]);
+
+      if (formattedValue < formattedValues) {
+        // eslint-disable-next-line no-plusplus
+        i++;
+      } else if (formattedValue > formattedValues) {
+        // eslint-disable-next-line no-plusplus
+        j++;
+      } else if (formattedValue === formattedValues) {
+        throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate values provided! ${this.values[i]} is already in use.`);
       }
-    });
+    }
   }
 
   // get SKU info
@@ -227,7 +240,7 @@ class Variation {
     this.categoryId = variation[0].category_id;
 
     let productItems;
-    if (variationName && variationName !== variation[0].name) {
+    if (variationName && formatName(variationName) !== formatName(variation[0].name)) {
       this.name = variationName;
       await this.checkCategory();
 
@@ -539,7 +552,7 @@ const updateVariation = catchAsync(async (data) => {
   const { variationName: name, productItems } = await updateNewVariation.validateVariation(variationId, data.name);
 
   // eslint-disable-next-line no-param-reassign
-  data.name = name;
+  data.name = name.trim();
 
   const variation = await prismaProducts.variation.update({
     where: {
