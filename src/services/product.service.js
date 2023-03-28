@@ -7,9 +7,10 @@ const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const { uploadImage, updateName, deleteImage, deleteFolder } = require("../utils/cloudinary");
 const parser = require("../utils/parser");
-const convertCurrency = require("../utils/currencyConverter");
 const { Currencies, FxRates } = require("../models");
+const convertCurrency = require("../utils/currencyConverter");
 const runInTransaction = require("../utils/mongoTransaction");
+const { formatName, createSKU } = require("../utils/name-sku");
 
 class CreateProductItem {
   constructor(quantity, price, options, categoryId = null) {
@@ -17,33 +18,6 @@ class CreateProductItem {
     this.price = price;
     this.options = options;
     this.categoryId = categoryId;
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  formatName(name) {
-    return encodeURIComponent(
-      name
-        .trim()
-        .toLowerCase()
-        .split(" ")
-        .join("_")
-        .replace(/[^a-zA-Z0-9-_]/g, "")
-    );
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  createSKU(str) {
-    if (str.trim().indexOf(" ") === -1) {
-      return str.trim().replace(/-/g, "").substring(0, 2).toUpperCase();
-    }
-    return str
-      .trim()
-      .replace(/-/g, "_")
-      .split(" ")
-      .map((word) => {
-        return word.charAt(0).toUpperCase();
-      })
-      .join("");
   }
 
   // checkOptions
@@ -145,16 +119,14 @@ class CreateProductItem {
 
     const names = [categoryName, productName];
 
-    let sku = names.map(
-      function (skuName) {
-        return this.createSKU(skuName);
-      }.bind(this)
-    );
+    let sku = names.map(function (skuName) {
+      return createSKU(skuName);
+    });
 
     sku = sku.concat(
       Object.values(orderedOptions).map((option) => {
         if (option.replace(" ", "").length > 4) {
-          return this.createSKU(option);
+          return createSKU(option);
         }
         return option.replace(" ", "").toUpperCase();
       })
@@ -274,9 +246,9 @@ class CreateProductItem {
       }
     }
 
-    const formattedName = this.formatName(productName);
+    const formattedName = formatName(productName);
 
-    const folder = `Products/${this.formatName(categoryName)}-${formattedName}`;
+    const folder = `Products/${formatName(categoryName)}-${formattedName}`;
 
     // if images is an array
     if (images) {
@@ -1189,40 +1161,40 @@ const updateProductItem = catchAsync(async (data, images, query) => {
 const deleteProductItem = catchAsync(async (productItemId, save) => {
   const deleteNewProductItem = new CreateProductItem();
 
-  const deleteProductItemTransaction = await prismaProducts.$transaction(async (prisma) => {
-    // validate product item
-    const validateProductItem = await prisma.$queryRaw`
-    WITH product_item_id AS (
-      SELECT a.id, a.product_id
-      FROM product_item AS a
-      WHERE a.id = ${productItemId}
-    )
+  // validate product item
+  const validateProductItem = await prismaProducts.$queryRaw`
+      WITH product_item_id AS (
+        SELECT a.id, a.product_id
+        FROM product_item AS a
+        WHERE a.id = ${productItemId}
+      )
 
-    SELECT (SELECT id FROM product_item_id) AS item_id,
-      array_agg(b.id) AS other_items,
-      (SELECT product_id FROM product_item_id) AS product_id
-    FROM product_item AS b
-    WHERE b.product_id = (SELECT product_id FROM product_item_id)
-      AND b.id != (SELECT id FROM product_item_id)
+      SELECT (SELECT id FROM product_item_id) AS item_id,
+        array_agg(b.id) AS other_items,
+        (SELECT product_id FROM product_item_id) AS product_id
+      FROM product_item AS b
+      WHERE b.product_id = (SELECT product_id FROM product_item_id)
+        AND b.id != (SELECT id FROM product_item_id)
     `;
 
-    if (validateProductItem.length === 0) {
-      throw new ApiError(httpStatus.BAD_REQUEST, `Product Item: ${productItemId} not found!`);
+  if (validateProductItem.length === 0) {
+    throw new ApiError(httpStatus.BAD_REQUEST, `Product Item: ${productItemId} not found!`);
+  }
+
+  // check if there are any more product items and what value does save has
+  if (!validateProductItem[0].other_items) {
+    if (save) {
+      throw new ApiError(
+        httpStatus.BAD_REQUEST,
+        "Its not possible to save the product, due to the fact that this is the only product item left. Change: save=false or add another product item to this product."
+      );
     }
 
-    // check if there are any more product items and what value does save has
-    if (!validateProductItem[0].other_items) {
-      if (save) {
-        throw new ApiError(
-          httpStatus.BAD_REQUEST,
-          "Its not possible to save the product, due to the fact that this is the only product item left. Change: save=false or add another product item to this product."
-        );
-      }
+    // delete the product itself
+    return deleteNewProductItem.deleteProductTransaction(validateProductItem[0].product_id);
+  }
 
-      // delete the product itself
-      return deleteNewProductItem.deleteProductTransaction(validateProductItem[0].product_id);
-    }
-
+  const deleteProductItemTransaction = await prismaProducts.$transaction(async (prisma) => {
     // delete product configurations
     const productConfigurations = await prisma.$queryRaw`
         DELETE FROM product_configuration

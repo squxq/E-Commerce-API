@@ -3,27 +3,13 @@ const httpStatus = require("http-status");
 const { Prisma } = require("@prisma/client");
 const { prismaProducts } = require("../config/db");
 const ApiError = require("../utils/ApiError");
+const { formatName, createSKU } = require("../utils/name-sku");
 const catchAsync = require("../utils/catchAsync");
 
 class Variation {
   constructor(categoryId, name) {
     this.categoryId = categoryId;
     this.name = name;
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  createSKU(str) {
-    if (str.trim().indexOf(" ") === -1) {
-      return str.trim().replace(/-/g, "").substring(0, 2).toUpperCase();
-    }
-    return str
-      .trim()
-      .replace(/-/g, "_")
-      .split(" ")
-      .map((word) => {
-        return word.charAt(0).toUpperCase();
-      })
-      .join("");
   }
 
   // check if the category is valid
@@ -57,7 +43,11 @@ class Variation {
     if (!checkCategoryQuery[0].ids.includes(id || this.categoryId))
       throw new ApiError(httpStatus.BAD_REQUEST, `Category: ${id || this.categoryId} is not valid!`);
 
-    if (checkCategoryQuery[0].names.includes(name || this.name)) {
+    if (
+      checkCategoryQuery[0].names.find((existingName) => {
+        return formatName(existingName) === formatName(name);
+      })
+    ) {
       throw new ApiError(httpStatus.BAD_REQUEST, `Variation name (${name || this.name}) is already in use!`);
     }
   }
@@ -468,7 +458,7 @@ class Variation {
   async changeValueSKU(newValue, optionId, variationName) {
     let newSKUValue;
     if (newValue.replace(" ", "").length > 4) {
-      newSKUValue = this.createSKU(newValue);
+      newSKUValue = createSKU(newValue);
     }
     newSKUValue = newValue.replace(" ", "").toUpperCase();
 

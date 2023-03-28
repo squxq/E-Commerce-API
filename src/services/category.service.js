@@ -5,39 +5,13 @@ const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
 const { prismaProducts } = require("../config/db");
 const parser = require("../utils/parser");
+const { formatName, createSKU } = require("../utils/name-sku");
 const { uploadImage, deleteImage, updateName, deleteFolder } = require("../utils/cloudinary");
 
 class Category {
   constructor(categoryName, parentId = null) {
     this.categoryName = categoryName;
     this.parentId = parentId;
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  formatName(name) {
-    return encodeURIComponent(
-      name
-        .trim()
-        .toLowerCase()
-        .split(" ")
-        .join("_")
-        .replace(/[^a-zA-Z0-9-_]/g, "")
-    );
-  }
-
-  // eslint-disable-next-line class-methods-use-this
-  createSKU(str) {
-    if (str.trim().indexOf(" ") === -1) {
-      return str.trim().replace(/-/g, "").substring(0, 2).toUpperCase();
-    }
-    return str
-      .trim()
-      .replace(/-/g, "_")
-      .split(" ")
-      .map((word) => {
-        return word.charAt(0).toUpperCase();
-      })
-      .join("");
   }
 
   // check name
@@ -96,7 +70,7 @@ class Category {
 
     if (
       result[0].names.find((name) => {
-        return this.formatName(name) === this.formatName(this.categoryName);
+        return formatName(name) === formatName(this.categoryName);
       })
     ) {
       throw new ApiError(
@@ -145,8 +119,8 @@ class Category {
 
   // update SKUs
   async updateSKUs(categoryId) {
-    const newSKU = this.createSKU(this.categoryName);
-    const formattedName = this.formatName(this.categoryName);
+    const newSKU = createSKU(this.categoryName);
+    const formattedName = formatName(this.categoryName);
 
     const udpateProductTransaction = await prismaProducts.$transaction(async (prisma) => {
       // get all products with category_id = categoryId
@@ -251,7 +225,7 @@ class Category {
     }
 
     let productItems;
-    if (categoryName && this.formatName(categoryName) !== this.formatName(category[0].name)) {
+    if (categoryName && formatName(categoryName) !== formatName(category[0].name)) {
       this.categoryName = categoryName;
       await this.validateName();
 
