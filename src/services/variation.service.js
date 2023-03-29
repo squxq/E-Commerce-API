@@ -469,11 +469,7 @@ class Variation {
 
   // change value in all products SKU
   async changeValueSKU(newValue, optionId, variationName) {
-    let newSKUValue;
-    if (newValue.replace(" ", "").length > 4) {
-      newSKUValue = createSKU(newValue);
-    }
-    newSKUValue = newValue.replace(" ", "").toUpperCase();
+    const newSKUValue = createSKU(newValue, true);
 
     // get all the product items that have option_id = optionId
     const productSKUs = await this.getSKUInfo(optionId, null, true);

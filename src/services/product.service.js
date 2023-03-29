@@ -10,7 +10,7 @@ const parser = require("../utils/parser");
 const { Currencies, FxRates } = require("../models");
 const convertCurrency = require("../utils/currencyConverter");
 const runInTransaction = require("../utils/mongoTransaction");
-const { formatName, createSKU } = require("../utils/name-sku");
+const { formatName, createSKU, updateImages } = require("../utils/name-sku");
 
 class CreateProductItem {
   constructor(quantity, price, options, categoryId = null) {
@@ -125,10 +125,7 @@ class CreateProductItem {
 
     sku = sku.concat(
       Object.values(orderedOptions).map((option) => {
-        if (option.replace(" ", "").length > 4) {
-          return createSKU(option);
-        }
-        return option.replace(" ", "").toUpperCase();
+        return createSKU(option, true);
       })
     );
 
@@ -746,6 +743,64 @@ class CreateProductItem {
       existing: existingImages,
     };
   }
+
+  // update all the SKUs and the cloudinary folder
+  // eslint-disable-next-line class-methods-use-this
+  async updateSKUs(prisma, newName, productId, productImage) {
+    // re-generate sku(s) for all product items
+    // for all product items that have product_id === productId
+    // change sku from 1st "-" to 2nd "-" with createSKU(data.name)
+    const newSKU = createSKU(newName);
+    const formattedName = formatName(newName);
+
+    const productItems = await prisma.$queryRaw`
+      UPDATE product_item AS p
+      SET "SKU" = regexp_replace("SKU", split_part("SKU", '-', 2), ${newSKU})
+      WHERE p.product_id = ${productId}
+      RETURNING p.id, p.product_id, "SKU", "QIS", p.images, p.price
+    `;
+
+    const productItemImages = productItems.map((obj) => {
+      const uniqueValues = obj.images.filter((value) => {
+        return value !== productImage;
+      });
+      return { id: obj.id, images: uniqueValues };
+    });
+
+    const mainImage = await updateImages([{ id: productId, images: productImage }], formattedName);
+    const newImagesArray = await updateImages(productItemImages, formattedName);
+
+    const deletedImages = [productImage, ...productItemImages].map(async (image) => deleteImage(image));
+
+    await Promise.all(deletedImages);
+
+    await deleteFolder(productImage.substring(0, productImage.lastIndexOf("/")));
+
+    // update images array
+    const newProductItems = await prisma.$queryRaw`
+      UPDATE product_item SET
+        images = v.imagesArr
+      FROM (VALUES
+        ${Prisma.join(
+          newImagesArray.map((row) => {
+            return Prisma.sql`(${Prisma.join(row)})`;
+          })
+        )}
+      ) AS v(itemId, imagesArr)
+      WHERE id = v.itemId
+      RETURNING id, product_id, "SKU", "QIS", images, price
+    `;
+
+    // update main images
+    const newProduct = await prisma.$queryRaw`
+      UPDATE product SET
+        image = ${mainImage[1]}
+      WHERE id = ${mainImage[0]}
+      RETURNING id, category_id, name, description, image
+    `;
+
+    return { newProduct, newProductItems };
+  }
 }
 
 /**
@@ -887,12 +942,8 @@ const updateProduct = catchAsync(async (data, image) => {
   if (!product) throw new ApiError(httpStatus.BAD_REQUEST, `Product: ${productId} not found!`);
   const { name } = product;
 
-  if (data.name) {
-    if (formatName(data.name) === formatName(name)) {
-      throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${data.name} is already in use.`);
-    }
-    // eslint-disable-next-line no-param-reassign
-    delete data.name;
+  if (data.name && formatName(data.name) === formatName(name)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${data.name} is already in use.`);
   }
 
   // validate image
@@ -935,17 +986,7 @@ const updateProduct = catchAsync(async (data, image) => {
 
     let productItems;
     if (data.name) {
-      // re-generate sku(s) for all product items
-      // for all product items that have product_id === productId
-      // change sku from 1st "-" to 2nd "-" with createSKU(data.name)
-      const newSKU = updateNewProduct.createSKU(data.name);
-
-      productItems = await prisma.$queryRaw`
-          UPDATE product_item AS p
-          SET "SKU" = regexp_replace("SKU", split_part("SKU", '-', 2), ${newSKU})
-          WHERE p.product_id = ${productId}
-          RETURNING p.id, p.product_id, "SKU", "QIS", p.images, p.price
-        `;
+      productItems = await updateNewProduct.updateSKUs(prisma, data.name, productId, result.image);
     }
 
     return {

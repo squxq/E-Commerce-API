@@ -82,41 +82,6 @@ class Category {
     return this.categoryName;
   }
 
-  // eslint-disable-next-line class-methods-use-this
-  async updateImages(imagesArr, formattedName) {
-    // imagesArr = [{id: '', images: ['']}]
-    const imagesPromises = imagesArr.map(async ({ id, images }) => {
-      if (Array.isArray(images)) {
-        const publicIds = images.map(async (image) => {
-          const imageArr = image.split("/");
-          imageArr[imageArr.length - 2] =
-            formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
-          const newName = imageArr.join("/");
-
-          // rename images in cloudinary
-          await updateName(image, newName);
-
-          return newName;
-        });
-
-        const results = await Promise.all(publicIds);
-
-        return [id, results];
-      }
-
-      const imageArr = images.split("/");
-      imageArr[imageArr.length - 2] =
-        formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
-      const newName = imageArr.join("/");
-
-      // rename images in cloudinary
-      await updateName(images, newName);
-      return [id, newName];
-    });
-
-    return Promise.all(imagesPromises);
-  }
-
   // update SKUs
   async updateSKUs(categoryId) {
     const newSKU = createSKU(this.categoryName);
@@ -147,9 +112,11 @@ class Category {
         new Map(products.map((obj) => [obj.image, { id: obj.id, images: obj.image }])).values()
       );
 
+      const productImagesPublicIds = productImages.map((obj) => obj.images);
+
       const productItemImages = productItems.map((obj) => {
-        const uniqueValues = obj.images.filter((value, index, self) => {
-          return index === self.indexOf(value);
+        const uniqueValues = obj.images.filter((value) => {
+          return !productImagesPublicIds.includes(value);
         });
         return { id: obj.id, images: uniqueValues };
       });
@@ -161,14 +128,14 @@ class Category {
 
       // delete all the previous images from cloudinary
       const deleteImages = Array.from(
-        new Set([...productImages.map((obj) => obj.images), [].concat(...productItemImages.map((obj) => obj.images))])
+        new Set([...productImagesPublicIds, [].concat(...productItemImages.map((obj) => obj.images))])
       ).map(async (image) => deleteImage(image));
 
       await Promise.all(deleteImages);
 
       // delete folders from cloudinary
       const folders = Array.from(
-        new Set(productImages.map(({ images: image }) => image.substring(0, image.lastIndexOf("/"))))
+        new Set(productImagesPublicIds.map((image) => image.substring(0, image.lastIndexOf("/"))))
       ).map(async (folder) => deleteFolder(folder));
 
       await Promise.all(folders);
@@ -318,6 +285,41 @@ class Category {
         description: true,
       },
     });
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  async updateImages(imagesArr, formattedName) {
+    // imagesArr = [{id: '', images: ['']}]
+    const imagesPromises = imagesArr.map(async ({ id, images }) => {
+      if (Array.isArray(images)) {
+        const publicIds = images.map(async (image) => {
+          const imageArr = image.split("/");
+          imageArr[imageArr.length - 2] =
+            formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
+          const newName = imageArr.join("/");
+
+          // rename images in cloudinary
+          await updateName(image, newName);
+
+          return newName;
+        });
+
+        const results = await Promise.all(publicIds);
+
+        return [id, results];
+      }
+
+      const imageArr = images.split("/");
+      imageArr[imageArr.length - 2] =
+        formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
+      const newName = imageArr.join("/");
+
+      // rename images in cloudinary
+      await updateName(images, newName);
+      return [id, newName];
+    });
+
+    return Promise.all(imagesPromises);
   }
 
   // eslint-disable-next-line class-methods-use-this
