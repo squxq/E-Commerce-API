@@ -3,7 +3,7 @@ const httpStatus = require("http-status");
 const { Prisma } = require("@prisma/client");
 const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
-const { prismaProducts } = require("../config/db");
+const { prismaInbound } = require("../config/db");
 const parser = require("../utils/parser");
 const { formatName, createSKU, updateImages } = require("../utils/name-sku");
 const { uploadImage, deleteImage, deleteFolder } = require("../utils/cloudinary");
@@ -22,7 +22,7 @@ class Category {
     let result;
     // check if category is a layer 1 category which means that it doesnt have a parent Id
     if (this.parentId) {
-      result = await prismaProducts.$queryRaw`
+      result = await prismaInbound.$queryRaw`
         WITH RECURSIVE layer AS (
           SELECT id,
               name,
@@ -59,7 +59,7 @@ class Category {
 
       if (!result[0].names[0]) return this.categoryName;
     } else {
-      result = await prismaProducts.$queryRaw`
+      result = await prismaInbound.$queryRaw`
         SELECT array_agg(a.name) AS names
         FROM product_category AS a
         WHERE a.parent_id IS NULL
@@ -87,7 +87,7 @@ class Category {
     const newSKU = createSKU(this.categoryName);
     const formattedName = formatName(this.categoryName);
 
-    const udpateProductTransaction = await prismaProducts.$transaction(async (prisma) => {
+    const udpateProductTransaction = await prismaInbound.$transaction(async (prisma) => {
       // get all products with category_id = categoryId
       const products = await prisma.product.findMany({
         where: {
@@ -177,7 +177,7 @@ class Category {
 
   // validate category starting with getting the parent id
   async validateParent(categoryId, categoryName) {
-    const category = await prismaProducts.$queryRaw`
+    const category = await prismaInbound.$queryRaw`
         SELECT id, parent_id, name
         FROM product_category
         WHERE id = ${categoryId}
@@ -219,7 +219,7 @@ class Category {
 
     const etag = hash(imageBuffer, { algorithm: "md5" });
 
-    const count = await prismaProducts.$queryRaw`
+    const count = await prismaInbound.$queryRaw`
       SELECT a.image,
       (
         SELECT COUNT(*)::int
@@ -333,7 +333,7 @@ class Category {
   }
 
   async updateResources(reverse = false, childId = null, newParentId = null) {
-    const updateResourcesTransaction = await prismaProducts
+    const updateResourcesTransaction = await prismaInbound
       .$transaction(async (prisma) => {
         const allProducts = await prisma.product.findMany({
           where: {
@@ -391,7 +391,7 @@ class Category {
 
   // eslint-disable-next-line class-methods-use-this
   async updateCategories() {
-    const updateCategoriesTransaction = await prismaProducts
+    const updateCategoriesTransaction = await prismaInbound
       .$transaction(async (prisma) => {
         let allChildren = await prisma.product_category.findMany({
           where: {
@@ -442,7 +442,7 @@ class Category {
   }
 
   async deleteTree(lastLayer, categoryId = null) {
-    const deleteCategoriesTransaction = await prismaProducts.$transaction(async (prisma) => {
+    const deleteCategoriesTransaction = await prismaInbound.$transaction(async (prisma) => {
       let treeIds = [this.categoryId];
       if (!lastLayer) {
         await this.validateParent(categoryId, null);
@@ -599,7 +599,7 @@ class Category {
   }
 
   async checkResources(parentId = null) {
-    const resources = await prismaProducts.$queryRaw`
+    const resources = await prismaInbound.$queryRaw`
       SELECT c.* FROM (
         (
           SELECT a.id
@@ -643,7 +643,7 @@ class Category {
 
     if (resources.length > 0) {
       // check for siblings
-      const siblings = await prismaProducts.$queryRaw`
+      const siblings = await prismaInbound.$queryRaw`
         SELECT id
         FROM product_category
         WHERE parent_id = ${this.parentId} AND id != ${this.categoryId}
@@ -703,7 +703,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
   const publicId = await createNewCategory.validateImage(file);
 
   // create category in product_category
-  let result = await prismaProducts.product_category.create({
+  let result = await prismaInbound.product_category.create({
     data: {
       parent_id: parentId,
       name: name.trim(),
@@ -721,7 +721,7 @@ const createCategory = catchAsync(async (categoryName, parentId, description, fi
 
   const incompatibilities = await createNewCategory.checkIncompatibilities(query.save, result.id).catch(async () => {
     // delete just created category
-    await prismaProducts.product_category.delete({
+    await prismaInbound.product_category.delete({
       where: {
         id: result.id,
       },
@@ -766,7 +766,7 @@ const updateCategory = catchAsync(async (data, imageUpdate) => {
     data.image = await updateNewCategory.validateImage(imageUpdate);
   }
 
-  const result = await prismaProducts.product_category.update({
+  const result = await prismaInbound.product_category.update({
     where: {
       id: categoryId,
     },

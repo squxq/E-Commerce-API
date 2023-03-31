@@ -1,12 +1,12 @@
 const app = require("./app");
 const config = require("./config/config");
 const logger = require("./config/logger");
-const { prismaProducts, connectMongo } = require("./config/db");
+const { prismaInbound, connectMongo } = require("./config/db");
 
 // Express usual app.listen()
 let server;
 connectMongo().then(() => {
-  prismaProducts.$connect().then(() => {
+  prismaInbound.$connect().then(() => {
     server = app.listen(config.port, () => {
       logger.info(`
           ################################################

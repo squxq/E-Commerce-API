@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require("uuid");
 const httpStatus = require("http-status");
 const { Prisma } = require("@prisma/client");
-const { prismaProducts } = require("../config/db");
+const { prismaInbound } = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const { formatName, createSKU } = require("../utils/name-sku");
 const catchAsync = require("../utils/catchAsync");
@@ -14,7 +14,7 @@ class Variation {
 
   // check if the category is valid
   async checkCategory(id = null, name = null) {
-    const checkCategoryQuery = await prismaProducts.$queryRaw`
+    const checkCategoryQuery = await prismaInbound.$queryRaw`
       SELECT *
       FROM (
         SELECT array_agg(a.id) AS ids
@@ -95,7 +95,7 @@ class Variation {
   // check for duplicates before creation
   async checkDuplicateValues(variationId) {
     // this means that we are creating variation options on top of an existing variation
-    const result = await prismaProducts.$queryRaw`
+    const result = await prismaInbound.$queryRaw`
       SELECT a.id, array_agg(b.value) AS values
       FROM variation AS a
       LEFT JOIN variation_option AS b
@@ -129,7 +129,7 @@ class Variation {
   // get SKU info
   // eslint-disable-next-line class-methods-use-this
   async getSKUInfo(variationOptions = null, variationId = null, multiple = false, productItemIds = null) {
-    return prismaProducts.$queryRaw`
+    return prismaInbound.$queryRaw`
       ${
         !productItemIds
           ? Prisma.sql`WITH product_item_info AS (
@@ -175,7 +175,7 @@ class Variation {
   // update SKUs in product_item
   // eslint-disable-next-line class-methods-use-this
   async updateSKUs(array) {
-    return prismaProducts.$queryRaw`
+    return prismaInbound.$queryRaw`
       UPDATE product_item SET
         "SKU" = v.new_sku
       FROM (VALUES
@@ -229,7 +229,7 @@ class Variation {
 
   // validate variation and name
   async validateVariation(variationId, variationName = null) {
-    const variation = await prismaProducts.$queryRaw`
+    const variation = await prismaInbound.$queryRaw`
       SELECT id, category_id, name
       FROM variation
       WHERE id = ${variationId}
@@ -262,13 +262,13 @@ class Variation {
   async checkResources() {
     let resources;
     if (this.optionId) {
-      resources = await prismaProducts.$queryRaw`
+      resources = await prismaInbound.$queryRaw`
         SELECT array_agg(c.product_item_id) AS resources_ids
         FROM product_configuration AS c
         WHERE c.variation_option_id = ${this.optionId}
       `;
     } else {
-      resources = await prismaProducts.$queryRaw`
+      resources = await prismaInbound.$queryRaw`
         WITH variation_option_ids AS (
           SELECT a.id
           FROM variation_option AS a
@@ -291,7 +291,7 @@ class Variation {
 
   async deleteVariation(variationOptionIds) {
     let deletedVariation;
-    const deleteVariationTransaction = await prismaProducts.$transaction(async (prisma) => {
+    const deleteVariationTransaction = await prismaInbound.$transaction(async (prisma) => {
       const deletedVariationOptions = await prisma.$queryRaw`
         DELETE FROM variation_option
         WHERE id IN (${Prisma.join(variationOptionIds)})
@@ -323,7 +323,7 @@ class Variation {
     const toUpdateProducts = [];
     let productItemsArr;
 
-    let productItemIds = await prismaProducts.$queryRaw`
+    let productItemIds = await prismaInbound.$queryRaw`
       SELECT product_item_id AS id
       FROM product_configuration
       WHERE product_item_id IN (
@@ -362,7 +362,7 @@ class Variation {
     // no products to delete
     if (toDeleteProducts.length === 0) {
       // first delete all the product_configurations that are attatched to variation_options that are going to be deleted
-      const deleteProductConfigurations = await prismaProducts.$queryRaw`
+      const deleteProductConfigurations = await prismaInbound.$queryRaw`
         DELETE FROM product_configuration
         WHERE product_item_id IN (${Prisma.join(productItemIds)})
           AND variation_option_id IN (${Prisma.join(variationOptionIds)})
@@ -379,7 +379,7 @@ class Variation {
     // some products to delete - is save true or false
     if (!save) {
       // delete product configurations and product items in productItemIds if product_item is the only in product delete that as well
-      const deleteProductTree = await prismaProducts.$transaction(async (prisma) => {
+      const deleteProductTree = await prismaInbound.$transaction(async (prisma) => {
         const productConfigurations = await prisma.$queryRaw`
           DELETE FROM product_configuration
           WHERE product_item_id IN (${Prisma.join(toDeleteProducts)})
@@ -423,7 +423,7 @@ class Variation {
   }
 
   async validateOption(optionId) {
-    const option = await prismaProducts.$queryRaw`
+    const option = await prismaInbound.$queryRaw`
       SELECT b.id, b.name
       FROM variation_option AS a
       LEFT JOIN variation AS b
@@ -504,7 +504,7 @@ const createVariation = catchAsync(async (categoryId, name, value, values) => {
   // check if value(s) is/are valid
   createNewVariation.checkValues(value, values);
 
-  const createVariationTransaction = await prismaProducts.$transaction(async (prisma) => {
+  const createVariationTransaction = await prismaInbound.$transaction(async (prisma) => {
     // create variation
     const variation = await prisma.variation.create({
       data: {
@@ -550,7 +550,7 @@ const updateVariation = catchAsync(async (data) => {
   // eslint-disable-next-line no-param-reassign
   data.name = name.trim();
 
-  const variation = await prismaProducts.variation.update({
+  const variation = await prismaInbound.variation.update({
     where: {
       id: variationId,
     },
@@ -596,7 +596,7 @@ const createVariationOptions = catchAsync(async (variationId, value, values) => 
   await createNewVariationOptions.checkDuplicateValues(variationId);
 
   // create the new variation options
-  const variationOptions = await createNewVariationOptions.variationOptionsTransaction(prismaProducts, variationId);
+  const variationOptions = await createNewVariationOptions.variationOptionsTransaction(prismaInbound, variationId);
 
   return {
     [variationOptions.length > 1 ? "variationOptions" : "variationOption"]: variationOptions,
@@ -632,7 +632,7 @@ const updateVariationOption = catchAsync(async (data) => {
     productItems = await updateNewVariationOption.changeValueSKU(data.value, optionId, variationName);
   }
 
-  const option = await prismaProducts.variation_option.update({
+  const option = await prismaInbound.variation_option.update({
     where: {
       id: optionId,
     },

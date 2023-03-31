@@ -20,8 +20,8 @@
     "lint:fix": "eslint . --fix",
     "prettier": "prettier --check **/*.js",
     "prettier:fix": "prettier write **/*.js",
-    "products:generate": "npx prisma generate --schema prisma_connections/prisma_products/schema.prisma",
-    "products:migrate": "npx prisma migrate dev --schema prisma_connections/prisma_products/schema.prisma"
+    "inbound:generate": "npx prisma generate --schema prisma_connections/prisma_products/schema.prisma",
+    "inbound:migrate": "npx prisma migrate dev --schema prisma_connections/prisma_products/schema.prisma"
   },
   "ignore": [
     "**/node_modules",

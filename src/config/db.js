@@ -4,7 +4,7 @@ const config = require("./config");
 const logger = require("./logger");
 const prismaMiddleware = require("../middlewares/prisma");
 
-const prismaProducts = new PrismaClient({
+const prismaInbound = new PrismaClient({
   log: [
     {
       emit: "event",
@@ -27,21 +27,21 @@ const prismaProducts = new PrismaClient({
 });
 
 // Logs
-prismaProducts.$on("beforeExit", async (e) => {
+prismaInbound.$on("beforeExit", async (e) => {
   logger.warn(`Connection between server and database closed. Event: ${e}`);
 });
 
-prismaProducts.$on("query", async (e) => {
+prismaInbound.$on("query", async (e) => {
   logger.info(`Query: ${e.query}`);
   logger.info(`Params: ${e.params}`);
   logger.info(`Duration: ${e.duration}ms`);
 });
 
-prismaProducts.$on("error", async (e) => {
+prismaInbound.$on("error", async (e) => {
   logger.error(e);
 });
 
-prismaProducts.$on("warn", async (e) => {
+prismaInbound.$on("warn", async (e) => {
   logger.warn(e);
 });
 
@@ -83,9 +83,9 @@ function connectMongo() {
 }
 
 // prisma Middleware
-prismaProducts.$use(prismaMiddleware);
+prismaInbound.$use(prismaMiddleware);
 
 module.exports = {
-  prismaProducts,
+  prismaInbound,
   connectMongo,
 };

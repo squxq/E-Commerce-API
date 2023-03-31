@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("PRODUCTS_DATABASE_URL")
+  url      = env("INBOUND_DATABASE_URL")
 }
 
 model product_category {
