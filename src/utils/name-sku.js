@@ -1,3 +1,5 @@
+const { updateName } = require("./cloudinary");
+
 function formatName(name) {
   return encodeURIComponent(
     name.trim().replace(/[\s]|[^a-zA-Z0-9-_]/g, (match) => {
@@ -11,7 +13,7 @@ function formatName(name) {
 
 function createSKU(str, option = false) {
   if (option) {
-    const formattedOption = option.trim().replace(/[-\s]/g, "");
+    const formattedOption = str.trim().replace(/[-\s]/g, "");
     if (formattedOption.length > 6) {
       return `${formattedOption.slice(0, 6) + formattedOption.charAt(-1)}`.toUpperCase();
     }
@@ -22,11 +24,7 @@ function createSKU(str, option = false) {
   const words = str.trim().replace(/-/g, "").split(" ");
   const importantLetters = words.reduce((arr, word) => {
     const firstLetter = word.charAt(0);
-    const capitals = word.match(/[A-Z]/g, (match) => {
-      if (match !== word.charAt(0)) {
-        return match;
-      }
-    });
+    const capitals = word.slice(1).match(/[A-Z]/g);
     arr.push([firstLetter, capitals]);
     return arr;
   }, []);
@@ -55,7 +53,51 @@ function createSKU(str, option = false) {
   return importantLetters.map((word) => word[0].toUpperCase()).join("");
 }
 
+async function updateImage(image, formattedName, mode) {
+  const imageArr = image.split("/");
+
+  if (mode === "category") {
+    imageArr[imageArr.length - 2] =
+      formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
+  } else if (mode === "product") {
+    imageArr[imageArr.length - 2] =
+      imageArr[imageArr.length - 2].substring(0, imageArr[imageArr.length - 2].indexOf("-") + 1) + formattedName;
+  }
+
+  const newName = imageArr.join("/");
+
+  // rename images in cloudinary
+  try {
+    await updateName(image, newName);
+    return newName;
+  } catch (err) {
+    return image;
+  }
+}
+
+async function updateImages(imagesArr, formattedName, mode) {
+  // imagesArr = [{id: '', images: ['']}]
+  const imagesPromises = imagesArr.map(async ({ id, images }) => {
+    if (Array.isArray(images)) {
+      const publicIds = images.map(async (image) => {
+        return updateImage(image, formattedName, mode);
+      });
+
+      const results = await Promise.all(publicIds);
+
+      return [id, results];
+    }
+
+    const newName = await updateImage(images, formattedName, mode);
+
+    return [id, newName];
+  });
+
+  return Promise.all(imagesPromises);
+}
+
 module.exports = {
   formatName,
   createSKU,
+  updateImages,
 };

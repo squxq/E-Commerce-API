@@ -200,7 +200,7 @@ class Variation {
 
     const updateSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
       const SKU = sku.split("-");
-      const skuArray = SKU.slice(2);
+      const skuArray = SKU.slice(3);
       let orderedOptions = {};
       variationNames.forEach((name, index) => {
         if (name === oldName) {
@@ -218,7 +218,7 @@ class Variation {
           return obj;
         }, {});
 
-      const newSKU = [...SKU.slice(0, 2), ...Object.values(orderedOptions)].join("-");
+      const newSKU = [...SKU.slice(0, 3), ...Object.values(orderedOptions)].join("-");
       return [id, newSKU];
     });
 

@@ -5,8 +5,8 @@ const catchAsync = require("../utils/catchAsync");
 const ApiError = require("../utils/ApiError");
 const { prismaProducts } = require("../config/db");
 const parser = require("../utils/parser");
-const { formatName, createSKU } = require("../utils/name-sku");
-const { uploadImage, deleteImage, updateName, deleteFolder } = require("../utils/cloudinary");
+const { formatName, createSKU, updateImages } = require("../utils/name-sku");
+const { uploadImage, deleteImage, deleteFolder } = require("../utils/cloudinary");
 
 class Category {
   constructor(categoryName, parentId = null) {
@@ -122,9 +122,9 @@ class Category {
       });
 
       // update product folders with the new categoryName
-      const mainImagesArray = await this.updateImages(productImages, formattedName);
+      const mainImagesArray = await updateImages(productImages, formattedName, "category");
 
-      const newImagesArray = await this.updateImages(productItemImages, formattedName);
+      const newImagesArray = await updateImages(productItemImages, formattedName, "category");
 
       // delete all the previous images from cloudinary
       const deleteImages = Array.from(
@@ -288,41 +288,6 @@ class Category {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  async updateImages(imagesArr, formattedName) {
-    // imagesArr = [{id: '', images: ['']}]
-    const imagesPromises = imagesArr.map(async ({ id, images }) => {
-      if (Array.isArray(images)) {
-        const publicIds = images.map(async (image) => {
-          const imageArr = image.split("/");
-          imageArr[imageArr.length - 2] =
-            formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
-          const newName = imageArr.join("/");
-
-          // rename images in cloudinary
-          await updateName(image, newName);
-
-          return newName;
-        });
-
-        const results = await Promise.all(publicIds);
-
-        return [id, results];
-      }
-
-      const imageArr = images.split("/");
-      imageArr[imageArr.length - 2] =
-        formattedName + imageArr[imageArr.length - 2].substring(imageArr[imageArr.length - 2].indexOf("-"));
-      const newName = imageArr.join("/");
-
-      // rename images in cloudinary
-      await updateName(images, newName);
-      return [id, newName];
-    });
-
-    return Promise.all(imagesPromises);
-  }
-
-  // eslint-disable-next-line class-methods-use-this
   async updateProductsVariations(prisma, { allProducts, allVariations }, reverse, childId) {
     let updateAllProducts;
     let updateAllVariations;
@@ -368,9 +333,6 @@ class Category {
   }
 
   async updateResources(reverse = false, childId = null, newParentId = null) {
-    // if (!reverse && !childId)
-    //   throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, "Something went wrong when updating resources");
-
     const updateResourcesTransaction = await prismaProducts
       .$transaction(async (prisma) => {
         const allProducts = await prisma.product.findMany({

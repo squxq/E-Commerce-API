@@ -123,11 +123,15 @@ class CreateProductItem {
       return createSKU(skuName);
     });
 
+    sku.push(new Date().getFullYear());
+
     sku = sku.concat(
       Object.values(orderedOptions).map((option) => {
         return createSKU(option, true);
       })
     );
+
+    sku.push(Date.now().toString(36));
 
     return { sku, orderedOptions };
   }
@@ -767,8 +771,8 @@ class CreateProductItem {
       return { id: obj.id, images: uniqueValues };
     });
 
-    const mainImage = await updateImages([{ id: productId, images: productImage }], formattedName);
-    const newImagesArray = await updateImages(productItemImages, formattedName);
+    const mainImage = await updateImages([{ id: productId, images: productImage }], formattedName, "product");
+    const newImagesArray = await updateImages(productItemImages, formattedName, "product");
 
     const deletedImages = [productImage, ...productItemImages].map(async (image) => deleteImage(image));
 
@@ -794,8 +798,8 @@ class CreateProductItem {
     // update main images
     const newProduct = await prisma.$queryRaw`
       UPDATE product SET
-        image = ${mainImage[1]}
-      WHERE id = ${mainImage[0]}
+        image = ${mainImage[0][1]}
+      WHERE id = ${mainImage[0][0]}
       RETURNING id, category_id, name, description, image
     `;
 
