@@ -1,27 +1,22 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ProducerService = exports.ConsumerService = void 0;
 const httpStatus = require("http-status");
-const logger = require("./logger.js");
-const { kafka } = require("./config.js");
-const ApiError = require("../utils/ApiError.js");
+const logger = require("../../src/config/logger");
+const { kafka } = require("../../src/config/config");
+const ApiError = require("../../src/utils/ApiError");
 const retry = require("async-retry");
-
-import { Consumer, Producer, ConsumerConfig, ConsumerSubscribeTopics, Kafka, KafkaMessage, Message } from "kafkajs";
-
-interface IConsumer {
-  connect: () => Promise<void>;
-  disconnect: () => Promise<void>;
-  consume: (onMessage: (message: any) => Promise<void>) => Promise<void>;
-}
-
-const sleep = (timeout: number) => {
-  return new Promise<void>((resolve) => setTimeout(resolve, timeout));
+const kafkajs_1 = require("kafkajs");
+const sleep = (timeout) => {
+  return new Promise((resolve) => setTimeout(resolve, timeout));
 };
-
-class KafkaJsConsumer implements IConsumer {
-  private readonly kafka: Kafka;
-  private readonly consumer: Consumer;
-
-  constructor(private readonly topic: ConsumerSubscribeTopics, config: ConsumerConfig, broker: string) {
-    this.kafka = new Kafka({
+class KafkaJsConsumer {
+  topic;
+  kafka;
+  consumer;
+  constructor(topic, config, broker) {
+    this.topic = topic;
+    this.kafka = new kafkajs_1.Kafka({
       clientId: "E-Commerce-API",
       brokers: [broker],
       ssl: true,
@@ -35,7 +30,6 @@ class KafkaJsConsumer implements IConsumer {
     });
     this.consumer = this.kafka.consumer(config);
   }
-
   async connect() {
     try {
       await this.consumer.connect();
@@ -45,8 +39,7 @@ class KafkaJsConsumer implements IConsumer {
       await this.connect();
     }
   }
-
-  async consume(onMessage: (message: KafkaMessage) => Promise<void>) {
+  async consume(onMessage) {
     await this.consumer.subscribe(this.topic);
     await this.consumer.run({
       eachMessage: async ({ message, partition }) => {
@@ -54,8 +47,7 @@ class KafkaJsConsumer implements IConsumer {
         try {
           await retry(async () => onMessage(message), {
             retries: 3,
-            onRetry: (error: any, attempt: any) =>
-              logger.error(`Error consuming message, executing retry${attempt}/3.`, error),
+            onRetry: (error, attempt) => logger.error(`Error consuming message, executing retry${attempt}/3.`, error),
           });
         } catch (err) {
           throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, `Error consuming message. ${err}`, false);
@@ -63,48 +55,32 @@ class KafkaJsConsumer implements IConsumer {
       },
     });
   }
-
   async disconnect() {
     await this.consumer.disconnect();
   }
 }
-
-interface KafkaJsConsumerOptions {
-  topic: ConsumerSubscribeTopics;
-  config: ConsumerConfig;
-  onMessage: (message: KafkaMessage) => Promise<void>;
-}
-
-export class ConsumerService {
-  private readonly consumers: IConsumer[] = [];
-
-  async consume({ topic, config, onMessage }: KafkaJsConsumerOptions) {
+class ConsumerService {
+  consumers = [];
+  async consume({ topic, config, onMessage }) {
     const consumer = new KafkaJsConsumer(topic, config, kafka.bootstrapURL);
-
     await consumer.connect();
     await consumer.consume(onMessage);
     this.consumers.push(consumer);
   }
-
   async disconnect() {
     for (const consumer of this.consumers) {
       await consumer.disconnect();
     }
   }
 }
-
-interface IProducer {
-  connect: () => Promise<void>;
-  disconnect: () => Promise<void>;
-  produce: (message: any) => Promise<void>;
-}
-
-class KafkaJsProducer implements IProducer {
-  private readonly kafka: Kafka;
-  private readonly producer: Producer;
-
-  constructor(private readonly topic: string, broker: string) {
-    this.kafka = new Kafka({
+exports.ConsumerService = ConsumerService;
+class KafkaJsProducer {
+  topic;
+  kafka;
+  producer;
+  constructor(topic, broker) {
+    this.topic = topic;
+    this.kafka = new kafkajs_1.Kafka({
       clientId: "E-Commerce-API",
       brokers: [broker],
       ssl: true,
@@ -118,11 +94,9 @@ class KafkaJsProducer implements IProducer {
     });
     this.producer = this.kafka.producer();
   }
-
-  async produce(message: Message) {
+  async produce(message) {
     await this.producer.send({ topic: this.topic, messages: [message] });
   }
-
   async connect() {
     try {
       await this.producer.connect();
@@ -132,36 +106,30 @@ class KafkaJsProducer implements IProducer {
       await this.connect();
     }
   }
-
   async disconnect() {
     await this.producer.disconnect();
   }
 }
-
-export class ProducerService {
-  private readonly producers = new Map<string, IProducer>();
-
-  async produce(topic: string, message: Message) {
+class ProducerService {
+  producers = new Map();
+  async produce(topic, message) {
     const producer = await this.getProducer(topic);
-
     await producer.produce(message);
   }
-
-  private async getProducer(topic: string) {
+  async getProducer(topic) {
     let producer = this.producers.get(topic);
     if (!producer) {
       producer = new KafkaJsProducer(topic, kafka.bootstrapURL);
-
       await producer.connect();
       this.producers.set(topic, producer);
     }
-
     return producer;
   }
-
   async disconnect() {
     for (const producer of this.producers.values()) {
       await producer.disconnect();
     }
   }
 }
+exports.ProducerService = ProducerService;
+//# sourceMappingURL=kafka.js.map

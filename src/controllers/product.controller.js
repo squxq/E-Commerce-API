@@ -1,6 +1,9 @@
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
 const { productService } = require("../services");
+const { ProducerService } = require("../../dist/config/kafka");
+
+const producer = new ProducerService();
 
 /**
  * @desc Create a new Product Controller
@@ -12,6 +15,10 @@ const { productService } = require("../services");
  */
 const createProduct = catchAsync(async (req, res) => {
   const result = await productService.createProduct(req.body, req.files);
+
+  if (result.hasOwnProperty("product")) {
+    await producer.produce("Products", { value: JSON.stringify(result.product) });
+  }
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
