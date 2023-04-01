@@ -8,7 +8,6 @@ const envVarsSchema = Joi.object()
   .keys({
     NODE_ENV: Joi.string().valid("production", "development", "test").required(),
     PORT: Joi.number().default(5000),
-    MONGODB_URL: Joi.string().required().description("Mongo DB url"),
     JWT_SECRET: Joi.string().required().description("JWT secret key"),
     JWT_ACCESS_EXPIRATION_MINUTES: Joi.number().default(30).description("minutes after which access tokens expire"),
     JWT_REFRESH_EXPIRATION_DAYS: Joi.number().default(30).description("days after which refresh tokens expire"),
@@ -31,6 +30,10 @@ const envVarsSchema = Joi.object()
     EXCHANGE_RATE_KEY: Joi.string().required().description("API key for https://app.exchangerate-api.com/"),
     CSV_FILE_PATH: Joi.string().required().description("Path to the csv file"),
     MONGO_DATABASE_URL: Joi.string().required().description("Mongo DB url"),
+    KAFKA_API_KEY: Joi.string().required().description("Kafka API key"),
+    KAFKA_API_SECRET: Joi.string().required().description("Kafka API secret"),
+    KAFKA_BOOTSTRAP_SERVER_URL: Joi.string().required().description("Kafka Bootstrap server URL"),
+    KAFKA_HOST_URL: Joi.string().required().description("Kafka host URL"),
   })
   .unknown();
 
@@ -43,14 +46,6 @@ if (error) {
 module.exports = {
   env: envVars.NODE_ENV,
   port: envVars.PORT,
-  mongoose: {
-    url: envVars.MONGODB_URL + (envVars.NODE_ENV === "test" ? "-test" : ""),
-    options: {
-      useCreateIndex: true,
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    },
-  },
   jwt: {
     secret: envVars.JWT_SECRET,
     accessExpirationMinutes: envVars.JWT_ACCESS_EXPIRATION_MINUTES,
@@ -87,4 +82,10 @@ module.exports = {
   },
   exchangeRateKey: envVars.EXCHANGE_RATE_KEY,
   csvFilePath: envVars.CSV_FILE_PATH,
+  kafka: {
+    apiKey: envVars.KAFKA_API_KEY,
+    apiSecret: envVars.KAFKA_API_SECRET,
+    bootstrapURL: envVars.KAFKA_BOOTSTRAP_SERVER_URL,
+    host: envVars.KAFKA_HOST_URL,
+  },
 };
