@@ -1,7 +1,7 @@
 const { SchemaRegistry, SchemaType } = require("@kafkajs/confluent-schema-registry");
 
 class RegisterService {
-  constructor(host, apiKey, apiSecret, schema) {
+  constructor(host, apiKey, apiSecret) {
     this.registry = new SchemaRegistry({
       host: host,
       auth: {
@@ -9,25 +9,21 @@ class RegisterService {
         password: `${apiSecret}`,
       },
     });
-
-    this.schema = schema;
   }
 
-  async getSchemaId(schema) {
+  async #getSchemaId(schema) {
     const { id } = await this.registry.register({
       type: SchemaType.AVRO,
       schema: JSON.stringify(schema),
     });
 
-    this.schemaId = id;
+    return id;
   }
 
-  async encodePayload(payload) {
-    if (!this.schemaId) {
-      await this.getSchemaId(this.schema);
-    }
+  async encodePayload(schema, payload) {
+    const schemaId = await this.#getSchemaId(schema);
 
-    return await this.registry.encode(this.schemaId, payload);
+    return await this.registry.encode(schemaId, payload);
   }
 
   async decodePayload(value) {

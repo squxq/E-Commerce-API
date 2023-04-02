@@ -3,11 +3,11 @@ const { kafka } = require("../config/config");
 const catchAsync = require("../utils/catchAsync");
 const { productService } = require("../services");
 const { ProducerService } = require("../../dist/config/kafka");
-const { Products } = require("../models");
+const { Products, ProductItems } = require("../models");
 const { RegisterClass } = require("../models/plugins");
 
 const producer = new ProducerService();
-const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret, Products);
+const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret);
 
 /**
  * @desc Create a new Product Controller
@@ -21,7 +21,7 @@ const createProduct = catchAsync(async (req, res) => {
   const result = await productService.createProduct(req.body, req.files);
 
   if (result.hasOwnProperty("product")) {
-    const encodedPayload = await register.encodePayload({
+    const encodedPayload = await register.encodePayload(Products, {
       name: result.product.name,
       description: result.product.description,
       category: result.category,
@@ -100,14 +100,16 @@ const createProductItem = catchAsync(async (req, res) => {
   const result = await productService.createProductItem(productId, quantity, price, options, req.files);
 
   if (result.hasOwnProperty("productItem")) {
+    const encodedPayload = await register.encodePayload(ProductItems, {
+      variants: {
+        ...result.variants,
+        price: result.productItem.price,
+      },
+    });
+
     await producer.produce("ProductItems", {
-      value: JSON.stringify({
-        productId: result.productItem.product_id,
-        variants: {
-          ...result.variants,
-          price: result.productItem.price,
-        },
-      }),
+      key: result.productItem.product_id,
+      value: encodedPayload,
     });
   }
 
