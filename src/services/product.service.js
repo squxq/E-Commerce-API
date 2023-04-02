@@ -373,18 +373,21 @@ class CreateProductItem {
 
       const productConfigurations = await prisma.$queryRaw`
         DELETE FROM product_configuration
-        WHERE id IN (${Prisma.join(products.product_configuration_ids)})
+        WHERE id IN (${Prisma.join([].concat(...products.map((productItem) => productItem.product_configuration_ids)))})
         RETURNING id, product_item_id, variation_option_id
       `;
 
-      const imagesPromises = Array.from(new Set([...products.product_item_public_ids, products.product_public_id])).map(
-        async (image) => deleteImage(image)
+      const imagesPromises = Array.from(
+        new Set([
+          ...[].concat(...products.map((productItem) => productItem.product_item_public_ids)),
+          products[0].product_public_id,
+        ])
       );
 
-      await Promise.all(imagesPromises);
+      await Promise.all(imagesPromises.map(async (image) => deleteImage(image)));
       const productItems = await prisma.$queryRaw`
         DELETE FROM product_item
-        WHERE id IN (${Prisma.join(products.product_item_ids)})
+        WHERE id IN (${Prisma.join(products.map((item) => item.product_item_ids[0]))})
         RETURNING id, product_id, "SKU", "QIS", images, price
       `;
 
@@ -679,11 +682,12 @@ class CreateProductItem {
         ) AS t
         GROUP BY t.product_id, t.product_public_id, t.product_item_ids, t.product_configuration_ids
       `;
+      console.log("🚀 ~ file: product.service.js:683 ~ CreateProductItem ~ deleteNewProductTransaction ~ product:", product);
 
       if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, `Product: ${productId} not found`);
 
       // delete all product items and their images from cloudinary
-      const productItems = await this.deleteProductItems(prisma, product[0], true);
+      const productItems = await this.deleteProductItems(prisma, product, true);
 
       // delete product folder from cloudinary
       await deleteFolder(product[0].product_public_id.substring(0, product[0].product_public_id.lastIndexOf("/")));
@@ -908,6 +912,8 @@ const createProduct = catchAsync(async (data, images) => {
       product: createNewProductTransaction,
       productItem: createProductItem,
       [createProductConfiguration.length > 1 ? "productConfigurations" : "productConfiguration"]: createProductConfiguration,
+      category: categoryName,
+      variants: orderedOptions,
     };
   });
 
@@ -1071,6 +1077,7 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
     return {
       productItem: createNewProditem,
       [createProductConfiguration.length > 1 ? "productConfigurations" : "productConfiguration"]: createProductConfiguration,
+      variants: orderedOptions,
     };
   });
 

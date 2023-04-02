@@ -2,9 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProducerService = exports.ConsumerService = void 0;
 const httpStatus = require("http-status");
-const logger = require("../../src/config/logger");
-const { kafka } = require("../../src/config/config");
-const ApiError = require("../../src/utils/ApiError");
+const logger = require("../../src/config/logger.js");
+const { kafka } = require("../../src/config/config.js");
+const ApiError = require("../../src/utils/ApiError.js");
 const retry = require("async-retry");
 const kafkajs_1 = require("kafkajs");
 const sleep = (timeout) => {

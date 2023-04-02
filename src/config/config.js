@@ -33,7 +33,9 @@ const envVarsSchema = Joi.object()
     KAFKA_API_KEY: Joi.string().required().description("Kafka API key"),
     KAFKA_API_SECRET: Joi.string().required().description("Kafka API secret"),
     KAFKA_BOOTSTRAP_SERVER_URL: Joi.string().required().description("Kafka Bootstrap server URL"),
-    KAFKA_HOST_URL: Joi.string().required().description("Kafka host URL"),
+    KAFKA_SCHEMA_HOST_URL: Joi.string().required().description("Kafka schema host URL"),
+    KAFKA_SCHEMA_API_KEY: Joi.string().required().description("Kafka schema API key"),
+    KAFKA_SCHEMA_API_SECRET: Joi.string().required().description("Kafka schema API secret"),
   })
   .unknown();
 
@@ -86,6 +88,8 @@ module.exports = {
     apiKey: envVars.KAFKA_API_KEY,
     apiSecret: envVars.KAFKA_API_SECRET,
     bootstrapURL: envVars.KAFKA_BOOTSTRAP_SERVER_URL,
-    host: envVars.KAFKA_HOST_URL,
+    schemaHost: envVars.KAFKA_SCHEMA_HOST_URL,
+    schemaKey: envVars.KAFKA_SCHEMA_API_KEY,
+    schemaSecret: envVars.KAFKA_SCHEMA_API_SECRET,
   },
 };

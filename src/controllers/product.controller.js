@@ -1,9 +1,13 @@
 const httpStatus = require("http-status");
+const { kafka } = require("../config/config");
 const catchAsync = require("../utils/catchAsync");
 const { productService } = require("../services");
 const { ProducerService } = require("../../dist/config/kafka");
+const { Products } = require("../models");
+const { RegisterClass } = require("../models/plugins");
 
 const producer = new ProducerService();
+const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret, Products);
 
 /**
  * @desc Create a new Product Controller
@@ -17,8 +21,24 @@ const createProduct = catchAsync(async (req, res) => {
   const result = await productService.createProduct(req.body, req.files);
 
   if (result.hasOwnProperty("product")) {
-    await producer.produce("Products", { value: JSON.stringify(result.product) });
+    const encodedPayload = await register.encodePayload({
+      name: result.product.name,
+      description: result.product.description,
+      category: result.category,
+      variants: {
+        ...result.variants,
+        price: result.productItem.price,
+      },
+    });
+
+    await producer.produce("Products", {
+      key: result.product.id,
+      value: encodedPayload,
+    });
   }
+
+  delete result.category;
+  delete result.variants;
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
@@ -78,6 +98,20 @@ const deleteProduct = catchAsync(async (req, res) => {
 const createProductItem = catchAsync(async (req, res) => {
   const { productId, quantity, price, options } = req.body;
   const result = await productService.createProductItem(productId, quantity, price, options, req.files);
+
+  if (result.hasOwnProperty("productItem")) {
+    await producer.produce("ProductItems", {
+      value: JSON.stringify({
+        productId: result.productItem.product_id,
+        variants: {
+          ...result.variants,
+          price: result.productItem.price,
+        },
+      }),
+    });
+  }
+
+  delete result.variants;
 
   return res.status(httpStatus.CREATED).json({
     type: "Success",
