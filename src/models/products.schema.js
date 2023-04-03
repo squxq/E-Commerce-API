@@ -1,30 +1,43 @@
-module.exports = {
-  fields: [
-    {
-      name: "name",
-      type: "string",
-    },
-    {
-      name: "description",
-      type: "string",
-    },
-    {
-      name: "category",
-      type: "string",
-    },
-    {
-      name: "variants",
-      type: {
-        type: "map",
-        values: ["null", "string", "int"],
+module.exports = [
+  {
+    fields: [
+      {
+        name: "id",
+        type: "string",
       },
-      default: {},
-    },
-  ],
-  validate: {
-    on_write: "(variants.price !== null) && (Object.keys(variants).length > 1)",
+    ],
+    name: "IdsSchema",
+    namespace: "com.ecommerceapi",
+    type: "record",
   },
-  name: "ProductsSchema",
-  namespace: "com.ecommerceapi",
-  type: "record",
-};
+  {
+    fields: [
+      {
+        name: "name",
+        type: "string",
+      },
+      {
+        name: "description",
+        type: "string",
+      },
+      {
+        name: "category",
+        type: "string",
+      },
+      {
+        name: "variants",
+        type: {
+          type: "map",
+          values: ["null", "string", "int"],
+        },
+        default: {},
+      },
+    ],
+    validate: {
+      on_write: "(variants.price !== null) && (Object.keys(variants).length > 1)",
+    },
+    name: "ProductsSchema",
+    namespace: "com.ecommerceapi",
+    type: "record",
+  },
+];

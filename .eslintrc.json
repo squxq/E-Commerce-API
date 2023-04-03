@@ -6,7 +6,7 @@
   "extends": ["airbnb-base", "plugin:jest/recommended", "plugin:security/recommended", "plugin:prettier/recommended"],
   "plugins": ["jest", "security", "prettier"],
   "parserOptions": {
-    "ecmaVersion": "latest"
+    "ecmaVersion": 2018
   },
   "rules": {
     "no-console": "error",
@@ -14,7 +14,6 @@
     "no-underscore-dangle": "off",
     "consistent-return": "off",
     "jest/expect-expect": "off",
-    "security/detect-object-injection": "off",
-    "noImplicitAny": false
+    "security/detect-object-injection": "off"
   }
 }
