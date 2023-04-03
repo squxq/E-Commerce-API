@@ -1,6 +1,3 @@
-# Dependencies
-node_modules
-
 # yarn error logs
 yarn-error.log
 
@@ -8,12 +5,49 @@ yarn-error.log
 .env*
 !.env*.example
 
-# Code coverage
-coverage
-
 # vscode
 .vscode
 
 # python
 venv
 data
+
+
+# Add any directories, files, or patterns you don't want to be tracked by version control
+.idea
+
+# ignore vs code project config files
+.vs
+
+# ignore logs
+logs
+*.log
+
+# ignore 3rd party lib
+node_modules
+
+# ignore key
+*.pem
+
+# Ignore built files
+dist
+
+# ignore test converage
+coverage
+
+# Environment varibles
+*.env
+*.env.test
+*.env copy
+
+#keys
+keys/*
+!keys/*.md
+!keys/*.example
+
+#temp
+temp
+.DS_Store
+
+*.save
+*.save.*
