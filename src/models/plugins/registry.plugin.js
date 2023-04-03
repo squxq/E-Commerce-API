@@ -1,4 +1,5 @@
 const { SchemaRegistry, SchemaType } = require("@kafkajs/confluent-schema-registry");
+const { kafka } = require("../../config/config");
 
 class RegisterService {
   constructor(host, apiKey, apiSecret) {
@@ -31,4 +32,4 @@ class RegisterService {
   }
 }
 
-module.exports = RegisterService;
+module.exports = new RegisterService(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret);
