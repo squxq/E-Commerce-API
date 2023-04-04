@@ -101,7 +101,7 @@ const createProductItem = catchAsync(async (req, res) => {
   const { productId, quantity, price, options } = req.body;
   const result = await productService.createProductItem(productId, quantity, price, options, req.files);
 
-  if (result.hasOwnProperty("productItem")) {
+  if ("productItem" in result) {
     const encodedPayload = await register.encodePayload(ProductItems, {
       variants: {
         ...result.variants,

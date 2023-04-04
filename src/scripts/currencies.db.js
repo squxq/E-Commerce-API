@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 /* eslint-disable no-param-reassign */
 const XLSX = require("xlsx");
-const { Currencies, FxRates } = require("../models");
+const { Currencies } = require("../models");
 const config = require("../config/config");
 const catchAsync = require("../utils/catchAsync");
 const { connectMongo } = require("../config/db");

@@ -12,7 +12,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "inbound:dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "inbound:dev": "cross-env NODE_ENV=development nodemon src/inbound/index.js",
+    "interface:dev": "cross-env NODE_ENV=development nodemon src/interface/index.js",
     "test": "jest -i --colors --verbose --detectOpenHandles",
     "test:watch": "jest -i --watchAll",
     "coverage": "jest -i --coverage",

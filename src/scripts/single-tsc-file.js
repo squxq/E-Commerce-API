@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const child_process = require("child_process");
+const childProcess = require("child_process");
 
 // define the desirec inclue property
 
@@ -21,7 +21,7 @@ const tempConfig = {
 fs.writeFileSync(tempConfigPath, JSON.stringify(tempConfig));
 
 // Call `tsc` with the `--project` flag set to the temporary `tsconfig.json` file
-child_process.execSync(`tsc --project ${tempConfigPath}`, { stdio: "inherit" });
+childProcess.execSync(`tsc --project ${tempConfigPath}`, { stdio: "inherit" });
 
 // Delete the temporary `tsconfig.json` file
 fs.unlinkSync(tempConfigPath);

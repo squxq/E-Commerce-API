@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable no-console */
 const util = require("util");
 const path = require("path");
 const fs = require("fs");
@@ -6,15 +7,14 @@ const { execSync } = require("child_process");
 
 // Utility functions
 const exec = util.promisify(require("child_process").exec);
+
 async function runCmd(command) {
   try {
     const { stdout, stderr } = await exec(command);
     console.log(stdout);
     console.log(stderr);
-  } catch {
-    (err) => {
-      console.log(err);
-    };
+  } catch (err) {
+    console.log(err);
   }
 }
 
@@ -22,7 +22,7 @@ async function hasYarn() {
   try {
     await execSync("yarnpkg --version", { stdio: "ignore" });
     return true;
-  } catch {
+  } catch (err) {
     return false;
   }
 }

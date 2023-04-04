@@ -39,7 +39,6 @@ function createSKU(str, option = false) {
     }
 
     if (words[0].length < 4) {
-      console.log("🚀 ~ file: name-sku.js:42 ~ createSKU ~ words:", words);
       return words[0].toUpperCase();
     }
 
