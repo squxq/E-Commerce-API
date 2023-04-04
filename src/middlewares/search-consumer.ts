@@ -1,6 +1,6 @@
-const { ConsumerService } = require("../config/kafka");
-const { RegisterClass } = require("../models/plugins/index.js");
-const logger = require("../config/logger.js");
+const { ConsumerService } = require("../config/kafka.ts");
+const { RegisterClass } = require("../models/plugins/index");
+const logger = require("../config/logger");
 const { kafka } = require("../config/config");
 
 const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret);
@@ -16,16 +16,18 @@ class SearchConsumer {
     await this.consumerService.consume({
       topic: { topics: [topic] },
       config: { groupId: "ProductConsumer" },
-      onMessage: async (message) => {
+      onMessage: async (message: { key; value }) => {
         const decodedKey = await register.decodePayload(message.key);
         const decodedValue = await register.decodePayload(message.value);
-        logger.debug(decodedKey, decodedValue);
+        logger.debug(decodedKey);
+        logger.debug(decodedValue);
       },
     });
   }
 
   async consumeSearch() {
     await this.consume("Products");
+    // await this.consume("ProductItems");
   }
 }
 
