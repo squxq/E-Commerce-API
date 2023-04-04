@@ -1,4 +1,6 @@
+const fs = require("fs");
 const { PrismaClient } = require("@prisma/client");
+const { Client } = require("@elastic/elasticsearch");
 const mongoose = require("mongoose");
 const config = require("./config");
 const logger = require("./logger");
@@ -85,7 +87,20 @@ function connectMongo() {
 // prisma Middleware
 prismaInbound.$use(prismaMiddleware);
 
+const elasticClient = new Client({
+  node: config.elastic.elasticSearchURI,
+  auth: {
+    username: config.elastic.elasticSearchUsername,
+    password: config.elastic.elasticSearchPassword,
+  },
+  tls: {
+    ca: fs.readFileSync("../../http_ca.crt"),
+    rejectUnauthorized: false,
+  },
+});
+
 module.exports = {
   prismaInbound,
   connectMongo,
+  elasticClient,
 };

@@ -29,7 +29,7 @@ node_modules
 *.pem
 
 # Ignore built files
-./dist
+dist/
 
 # ignore test converage
 coverage
@@ -50,3 +50,6 @@ temp
 
 *.save
 *.save.*
+
+# CA Certificate
+./http_ca.crt
