@@ -8,6 +8,7 @@ const createProduct = {
       .label("Category Id"),
     name: Joi.string().required().label("Name"),
     description: Joi.string().required().label("Description"),
+    brand: Joi.string().label("Product brand"),
     quantity: Joi.number().integer().required().greater(0).label("Quantity in Stock"),
     price: Joi.object()
       .keys({
@@ -45,6 +46,7 @@ const updateProduct = {
       .label("Product Id"),
     name: Joi.string().label("Product Name"),
     description: Joi.string().label("Product Description"),
+    brand: Joi.string().label("Product brand"),
   }),
   file: Joi.object()
     .keys({

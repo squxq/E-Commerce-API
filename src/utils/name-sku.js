@@ -32,13 +32,14 @@ function createSKU(str, option = false) {
   // one word
   if (importantLetters.length === 1) {
     // check camelCase / PascalCase
-    if (importantLetters[0][1] && importantLetters[0][1]?.length > 0) {
+    if (importantLetters[0][1] && importantLetters[0][1].length > 0) {
       // means that there is camelCase / PascalCase
       const result = importantLetters[0][0].toUpperCase() + importantLetters[0][1].join("");
       return result.length > 4 ? result.slice(0, 4) : result;
     }
 
     if (words[0].length < 4) {
+      console.log("🚀 ~ file: name-sku.js:42 ~ createSKU ~ words:", words);
       return words[0].toUpperCase();
     }
 

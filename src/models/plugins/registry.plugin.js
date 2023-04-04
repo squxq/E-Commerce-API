@@ -1,4 +1,8 @@
-const { SchemaRegistry, SchemaType } = require("@kafkajs/confluent-schema-registry");
+const {
+  SchemaRegistry,
+  SchemaType,
+  COMPATIBILITY: { BACKWARD },
+} = require("@kafkajs/confluent-schema-registry");
 
 class RegisterService {
   constructor(host, apiKey, apiSecret) {
@@ -12,10 +16,13 @@ class RegisterService {
   }
 
   async getSchemaId(schema) {
-    const { id } = await this.registry.register({
-      type: SchemaType.AVRO,
-      schema: JSON.stringify(schema),
-    });
+    const { id } = await this.registry.register(
+      {
+        type: SchemaType.AVRO,
+        schema: JSON.stringify(schema),
+      },
+      { compatibility: BACKWARD }
+    );
 
     return id;
   }

@@ -13,6 +13,10 @@ module.exports = [
   {
     fields: [
       {
+        name: "category",
+        type: "string",
+      },
+      {
         name: "name",
         type: "string",
       },
@@ -21,8 +25,14 @@ module.exports = [
         type: "string",
       },
       {
-        name: "category",
+        name: "image",
         type: "string",
+        default: "undefined",
+      },
+      {
+        name: "brand",
+        type: "string",
+        default: "undefined",
       },
       {
         name: "variants",

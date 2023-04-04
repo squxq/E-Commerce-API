@@ -20,10 +20,12 @@ const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.sche
 const createProduct = catchAsync(async (req, res) => {
   const result = await productService.createProduct(req.body, req.files);
 
-  if (result.hasOwnProperty("product")) {
+  if ("product" in result) {
     const encodedPayload = await register.encodePayload(Products[1], {
       name: result.product.name,
       description: result.product.description,
+      image: result.product.image,
+      brand: result.product.brand,
       category: result.category,
       variants: {
         ...result.variants,

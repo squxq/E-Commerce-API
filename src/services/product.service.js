@@ -108,7 +108,7 @@ class CreateProductItem {
   }
 
   // generateSKU
-  generateSKU(categoryName, productName, options) {
+  generateSKU(categoryName, productName, brandName, options) {
     const orderedOptions = Object.keys(options || this.options)
       .sort()
       .reduce((obj, key) => {
@@ -117,7 +117,7 @@ class CreateProductItem {
         return obj;
       }, {});
 
-    const names = [categoryName, productName];
+    const names = [categoryName, productName, brandName];
 
     let sku = names.map(function (skuName) {
       return createSKU(skuName);
@@ -682,7 +682,6 @@ class CreateProductItem {
         ) AS t
         GROUP BY t.product_id, t.product_public_id, t.product_item_ids, t.product_configuration_ids
       `;
-      console.log("🚀 ~ file: product.service.js:683 ~ CreateProductItem ~ deleteNewProductTransaction ~ product:", product);
 
       if (product.length === 0) throw new ApiError(httpStatus.BAD_REQUEST, `Product: ${productId} not found`);
 
@@ -703,6 +702,7 @@ class CreateProductItem {
           name: true,
           description: true,
           image: true,
+          brand: true,
         },
       });
 
@@ -824,7 +824,7 @@ class CreateProductItem {
  * @returns { Array }
  */
 const createProduct = catchAsync(async (data, images) => {
-  const { categoryId, name, description, quantity, price, options } = data;
+  const { categoryId, name, description, brand, quantity, price, options } = data;
   const createNewProduct = new CreateProductItem(quantity, price, options, categoryId);
 
   // check name
@@ -869,7 +869,7 @@ const createProduct = catchAsync(async (data, images) => {
   imagesArray.pop();
 
   // SKU - generation === categoryName + productName + productVariationOptions
-  const { sku, orderedOptions } = createNewProduct.generateSKU(categoryName, name);
+  const { sku, orderedOptions } = createNewProduct.generateSKU(categoryName, name, brand);
 
   const createProductTransaction = await prismaInbound.$transaction(async (prisma) => {
     const createNewProductTransaction = await prisma.product
@@ -879,6 +879,7 @@ const createProduct = catchAsync(async (data, images) => {
           name,
           description,
           image: mainPublicId,
+          brand,
         },
         select: {
           id: true,
@@ -886,6 +887,7 @@ const createProduct = catchAsync(async (data, images) => {
           name: true,
           description: true,
           image: true,
+          brand: true,
         },
       })
       .catch((err) => {
@@ -946,6 +948,7 @@ const updateProduct = catchAsync(async (data, image) => {
     select: {
       name: true,
       image: true,
+      brand: true,
     },
   });
 
@@ -975,6 +978,7 @@ const updateProduct = catchAsync(async (data, image) => {
         name: true,
         description: true,
         image: true,
+        brand: true,
       },
     });
 
@@ -1034,6 +1038,7 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
     select: {
       category_id: true,
       name: true,
+      brand: true,
     }, // product object inside category_id: the actual id
   });
 
@@ -1061,7 +1066,7 @@ const createProductItem = catchAsync(async (productId, quantity, price, options,
   imagesArray = [...existing, ...imagesArray];
 
   // SKU - generation === categoryName + productName + productVariationOptions
-  const { sku, orderedOptions } = createNewProductItem.generateSKU(categoryName, productName);
+  const { sku, orderedOptions } = createNewProductItem.generateSKU(categoryName, productName, product.brand);
 
   // create productItemTransaction
   const createProductItemTransaction = await prismaInbound.$transaction(async (prisma) => {
@@ -1107,6 +1112,7 @@ const updateProductItem = catchAsync(async (data, images, query) => {
   const productItem = await prismaInbound.$queryRaw`
     SELECT b.id AS product_id,
       b.name AS product_name,
+      b.brand AS product_brand,
       c.id AS category_id,
       c.name AS category_name,
       a."QIS" AS item_quantity,
@@ -1152,7 +1158,8 @@ const updateProductItem = catchAsync(async (data, images, query) => {
     // re-generate sku
     const { sku, orderedOptions } = updateNewProductItem.generateSKU(
       productItem[0].category_name,
-      productItem[0].product_name
+      productItem[0].product_name,
+      productItem[0].product_brand
     );
 
     // eslint-disable-next-line no-param-reassign

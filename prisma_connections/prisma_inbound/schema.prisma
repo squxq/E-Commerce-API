@@ -30,6 +30,7 @@ model product {
   name         String
   description  String
   image        String
+  brand        String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   category     product_category @relation(fields: [category_id], references: [id])

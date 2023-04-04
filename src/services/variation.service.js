@@ -45,7 +45,7 @@ class Variation {
 
     if (
       checkCategoryQuery[0].names.find((existingName) => {
-        return formatName(existingName) === formatName(name);
+        return existingName ? formatName(existingName) === formatName(name) : false;
       })
     ) {
       throw new ApiError(httpStatus.BAD_REQUEST, `Variation name (${name || this.name}) is already in use!`);
@@ -200,7 +200,7 @@ class Variation {
 
     const updateSKUArray = productSKUs.map(({ item_id: id, sku, variation_names: variationNames }) => {
       const SKU = sku.split("-");
-      const skuArray = SKU.slice(3);
+      const skuArray = SKU.slice(4);
       let orderedOptions = {};
       variationNames.forEach((name, index) => {
         if (name === oldName) {
@@ -218,7 +218,7 @@ class Variation {
           return obj;
         }, {});
 
-      const newSKU = [...SKU.slice(0, 3), ...Object.values(orderedOptions)].join("-");
+      const newSKU = [...SKU.slice(0, 4), ...Object.values(orderedOptions)].join("-");
       return [id, newSKU];
     });
 
@@ -232,7 +232,7 @@ class Variation {
     const variation = await prismaInbound.$queryRaw`
       SELECT id, category_id, name
       FROM variation
-      WHERE id = ${variationId}
+      WHERE id = ${variationId || this.categoryId}
     `;
 
     if (variation.length === 0) throw new ApiError(httpStatus.NOT_FOUND, `Variation ${variationId} not found!`);
@@ -242,7 +242,7 @@ class Variation {
     let productItems;
     if (variationName && formatName(variationName) !== formatName(variation[0].name)) {
       this.name = variationName;
-      await this.checkCategory();
+      await this.checkCategory(null, variation[0].name);
 
       // change order in sku based on current variationName
       productItems = await this.changeOrderSKU(variation[0].id, variation[0].name);
@@ -499,7 +499,7 @@ class Variation {
 const createVariation = catchAsync(async (categoryId, name, value, values) => {
   const createNewVariation = new Variation(categoryId, name);
   // check if the categoryId is valid
-  await createNewVariation.checkCategory();
+  await createNewVariation.checkCategory(null, name);
 
   // check if value(s) is/are valid
   createNewVariation.checkValues(value, values);
