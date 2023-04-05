@@ -1,6 +1,10 @@
 version: "3"
 
 services:
-  node-app:
-    container_name: e-commerce-api-dev
+  inbound-api:
+    container_name: e-commerce-api-inbound-dev
+    command: yarn dev -L
+
+  interface-api:
+    container_name: e-commerce-api=interface-dev
     command: yarn dev -L

@@ -1,28 +1,64 @@
 version: "3"
 
 services:
-  node-app:
-    build: .
+  inbound-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    restart: always
+    env_file: .env
+    expose:
+      - ${INBOUND_PORT}
+    ports:
+      - ${INBOUND_PORT}:${INBOUND_PORT}
     image: e-commerce-api
     environment:
-      - MONGODB_URL=mongodb://mongodb:27017/node-boilerplate
-    ports:
-      - "5000:5000"
+      - MONGODB_URL=mongodb://mongo:27017/node-boilerplate
+      - CLIENT_URL=${CLIENT_URL}
+    links:
+      - mongo
     depends_on:
       - mongodb
     volumes:
       - .:/usr/src/node-app
     networks:
-      - node-network
+      - backend
+
+  interface-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    restart: always
+    env_file: .env
+    expose:
+      - ${INTERFACE_PORT}
+    ports:
+      - ${INTERFACE_PORT}:${INTERFACE_PORT}
+    image: e-commerce-api
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017/node-boilerplate
+      - CLIENT_URL=${CLIENT_URL}
+    links:
+      - mongo
+    depends_on:
+      - mongodb
+    volumes:
+      - .:/usr/src/node-app
+    networks:
+      - backend
 
   mongodb:
+    container_name: mongo
     image: mongo:4.2.1-bionic
+    restart: always
     ports:
       - "27017:27017"
     volumes:
       - dbdata:/data/db
     networks:
-      - node-network
+      - backend
 
 volumes:
   dbdata:

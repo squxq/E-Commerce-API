@@ -4,7 +4,7 @@ const docsRoute = require("./docs.route");
 const productRoute = require("./product.route");
 const categoryRoute = require("./category.route");
 const variationRoute = require("./variation.route");
-const config = require("../../../config/config");
+const config = require("../../config/config");
 
 const router = express.Router();
 

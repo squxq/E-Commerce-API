@@ -1,6 +1,10 @@
 version: "3"
 
 services:
-  node-app:
-    container_name: e-commerce-api-test
+  inbound-api:
+    container_name: e-commerce-api-inbound-test
     command: yarn test
+
+  interface-api:
+    container_name: e-commerce-api-interface-test
+    command: yarn test:js

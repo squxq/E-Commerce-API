@@ -1,7 +1,7 @@
 const app = require("./app");
-const config = require("../config/config");
-const logger = require("../config/logger");
-const { connectMongo } = require("../config/db");
+const config = require("../inbound/config/config");
+const logger = require("../inbound/config/logger");
+const { connectMongo } = require("../inbound/config/db");
 
 // Express usual app.listen()
 let server;

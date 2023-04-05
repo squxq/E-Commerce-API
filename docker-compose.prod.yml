@@ -1,6 +1,12 @@
 version: "3"
 
 services:
-  node-app:
-    container_name: e-commerce-api-prod
+  inbound-api:
+    container_name: e-commerce-api-inbound-prod
+    command: yarn start
+
+  interface-api:
+    container_name: e-commerce-api-interface-prod
+    build:
+      target: production
     command: yarn start

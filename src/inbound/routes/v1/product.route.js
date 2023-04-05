@@ -1,8 +1,8 @@
 const express = require("express");
-const validate = require("../../../middlewares/validate");
-const productController = require("../../../controllers/product.controller");
-const productValidation = require("../../../validations/product.validation");
-const { anyFile, singleFile } = require("../../../utils/multer");
+const validate = require("../../middlewares/validate");
+const productController = require("../../../inbound/controllers/product.controller");
+const productValidation = require("../../validations/product.validation");
+const { anyFile, singleFile } = require("../../utils/multer");
 
 const router = express.Router();
 

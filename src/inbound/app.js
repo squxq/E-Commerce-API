@@ -6,14 +6,14 @@ const compression = require("compression");
 const cors = require("cors");
 const httpStatus = require("http-status");
 const createLocaleMiddleware = require("express-locale");
-const config = require("../config/config");
-const morgan = require("../config/morgan");
+const config = require("./config/config");
+const morgan = require("./config/morgan");
 
-const { authLimiter } = require("../middlewares/rateLimiter");
-const { errorConverter, errorHandler } = require("../middlewares/error");
-const ApiError = require("../utils/ApiError");
-const startPolyglot = require("../utils/startPolyglot");
-const routes = require("../routes/inbound/v1");
+const { authLimiter } = require("./middlewares/rateLimiter");
+const { errorConverter, errorHandler } = require("./middlewares/error");
+const ApiError = require("./utils/ApiError");
+const startPolyglot = require("./utils/startPolyglot");
+const routes = require("./routes/v1");
 
 const app = express();
 if (config.env !== "test") {

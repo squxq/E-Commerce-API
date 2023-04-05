@@ -1,7 +1,7 @@
 const app = require("./app");
-const config = require("../config/config");
-const logger = require("../config/logger");
-const { prismaInbound, connectMongo } = require("../config/db");
+const config = require("./config/config");
+const logger = require("./config/logger");
+const { prismaInbound, connectMongo } = require("./config/db");
 
 // Express usual app.listen()
 let server;

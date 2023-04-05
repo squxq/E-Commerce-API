@@ -3,8 +3,11 @@
   "version": "1.0.0",
   "description": "E-Commerce API with all major functionalities",
   "bin": "bin/createApp.js",
-  "main": "src/index.js",
+  "main": "src/inbound/index.js",
   "repository": "https://github.com/squxq/E-Commerce-API.git",
+  "bugs": {
+    "url": "https://github.com/squxq/E-Commerce-API/issues"
+  },
   "author": "squxq <franciscotomas0430@gmail.com>",
   "license": "MIT",
   "engines": {
@@ -22,8 +25,8 @@
     "lint:fix": "eslint . --fix",
     "prettier": "prettier --check **/*.js",
     "prettier:fix": "prettier write **/*.js",
-    "inbound:migrate": "npx prisma migrate dev --schema prisma_connections/prisma_inbound/schema.prisma",
-    "inbound:generate": "npx prisma generate --schema prisma_connections/prisma_inbound/schema.prisma"
+    "inbound:migrate": "npx prisma migrate dev --schema prisma_connections/inbound/schema.prisma",
+    "inbound:generate": "npx prisma generate --schema prisma_connections/inbound/schema.prisma"
   },
   "ignore": [
     "**/node_modules",

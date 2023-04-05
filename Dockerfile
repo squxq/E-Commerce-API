@@ -1,15 +1,26 @@
-FROM node:alpine
+# development stage
+FROM node:14-alpine as base
 
-RUN mkdir -p /usr/src/e-commerce-api && chown -R node:node /usr/src/e-commerce-api
+WORKDIR /usr/src/app
 
-WORKDIR /usr/src/e-commerce-api
+COPY package.json yarn.lock tsconfig.json ecosystem.config.json ./
 
-COPY package.json yarn.lock ./
+COPY ./src ./src
 
-USER node
+RUN ls -a
 
-RUN yarn install --pure-lockfile
+RUN yarn install --pure-lockfile && yarn compile
 
-COPY --chown=node:node . .
+# production stage
 
-EXPOSE 5000
+FROM base as production
+
+WORKDIR /usr/prod/app
+
+ENV NODE_ENV=production
+
+COPY package.json yarn.lock ecosystem.config.json ./
+
+RUN yarn install --production --pure-lockfile
+
+COPY --from=base /usr/src/app/dist ./dist
