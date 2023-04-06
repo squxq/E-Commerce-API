@@ -14,9 +14,10 @@
     "node": ">=19.0.0"
   },
   "scripts": {
-    "build": "tsc",
+    "compile": "tsc --build",
+    "compile:watch": "tsc --build --watch",
     "inbound:dev": "cross-env NODE_ENV=development nodemon src/inbound/index.js",
-    "interface:dev": "cross-env NODE_ENV=development nodemon src/interface/index.js",
+    "interface:dev": "cross-env NODE_ENV=development nodemon --experimental-modules --es-module-specifier-resolution=node dist/interface/index.js",
     "test": "jest -i --colors --verbose --detectOpenHandles",
     "test:watch": "jest -i --watchAll",
     "coverage": "jest -i --coverage",
@@ -71,6 +72,7 @@
   "devDependencies": {
     "@tsconfig/node18": "^1.0.1",
     "@types/async-retry": "^1.4.5",
+    "@types/jest": "^29.5.0",
     "@types/node": "^18.15.11",
     "@typescript-eslint/eslint-plugin": "^5.57.0",
     "@typescript-eslint/parser": "^5.57.0",

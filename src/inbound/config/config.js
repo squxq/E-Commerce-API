@@ -8,7 +8,6 @@ const envVarsSchema = Joi.object()
   .keys({
     NODE_ENV: Joi.string().valid("production", "development", "test").required(),
     INBOUND_PORT: Joi.number().default(5000),
-    INTERFACE_PORT: Joi.number().default(5000),
     JWT_SECRET: Joi.string().required().description("JWT secret key"),
     JWT_ACCESS_EXPIRATION_MINUTES: Joi.number().default(30).description("minutes after which access tokens expire"),
     JWT_REFRESH_EXPIRATION_DAYS: Joi.number().default(30).description("days after which refresh tokens expire"),
@@ -37,9 +36,6 @@ const envVarsSchema = Joi.object()
     KAFKA_SCHEMA_HOST_URL: Joi.string().required().description("Kafka schema host URL"),
     KAFKA_SCHEMA_API_KEY: Joi.string().required().description("Kafka schema API key"),
     KAFKA_SCHEMA_API_SECRET: Joi.string().required().description("Kafka schema API secret"),
-    ELASTIC_SEARCH_URI: Joi.string().required().description("Elastic search URI"),
-    ELASTIC_SEARCH_USERNAME: Joi.string().required().description("Elastic search username"),
-    ELASTIC_SEARCH_PASSWORD: Joi.string().required().description("Elastic search password"),
   })
   .unknown();
 
@@ -51,10 +47,7 @@ if (error) {
 
 module.exports = {
   env: envVars.NODE_ENV,
-  ports: {
-    inboundPort: envVars.INBOUND_PORT,
-    interfacePort: envVars.INTERFACE_PORT,
-  },
+  inboundPort: envVars.INBOUND_PORT,
   jwt: {
     secret: envVars.JWT_SECRET,
     accessExpirationMinutes: envVars.JWT_ACCESS_EXPIRATION_MINUTES,
@@ -98,10 +91,5 @@ module.exports = {
     schemaHost: envVars.KAFKA_SCHEMA_HOST_URL,
     schemaKey: envVars.KAFKA_SCHEMA_API_KEY,
     schemaSecret: envVars.KAFKA_SCHEMA_API_SECRET,
-  },
-  elastic: {
-    elasticSearchURI: envVars.ELASTIC_SEARCH_URI,
-    elasticSearchUsername: envVars.ELASTIC_SEARCH_USERNAME,
-    elasticSearchPassword: envVars.ELASTIC_SEARCH_PASSWORD,
   },
 };

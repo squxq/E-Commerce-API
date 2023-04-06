@@ -7,10 +7,10 @@ const { prismaInbound, connectMongo } = require("./config/db");
 let server;
 connectMongo().then(() => {
   prismaInbound.$connect().then(() => {
-    server = app.listen(config.ports.inboundPort, () => {
+    server = app.listen(config.inboundPort, () => {
       logger.info(`
           ##############################################
-          🚀 Inbound Service listening on port: ${config.ports.inboundPort} 🚀
+          🚀 Inbound Service listening on port: ${config.inboundPort} 🚀
           ##############################################
       `);
     });
