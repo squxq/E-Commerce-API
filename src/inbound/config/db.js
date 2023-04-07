@@ -62,7 +62,7 @@ function onReconnected() {
   logger.warn("MongoDB Atlas reconnected!");
 }
 
-function onSIGINT() {
+function onSIGINT(db) {
   // eslint-disable-next-line no-undef
   db.close(() => {
     logger.warn("MongoDB Atlas default connection disconnected through app termination!");
@@ -72,14 +72,14 @@ function onSIGINT() {
 }
 
 function connectMongo() {
-  const connection = mongoose.connect(config.db.mongo.mongoURI, config.db.mongo.options);
+  const connection = mongoose.connect(config.db.mongo.mongoURI, JSON.parse(JSON.stringify(config.db.mongo.options)));
   const db = mongoose.connection;
 
-  db.on("error", onError);
+  db.on("error", (err) => onError(err));
   db.on("connected", onConnected);
   db.on("reconnected", onReconnected);
 
-  process.on("SIGINT", onSIGINT);
+  process.on("SIGINT", () => onSIGINT(db));
   return connection;
 }
 

@@ -1,17 +1,21 @@
-import mongoose from "mongoose";
 import app from "./app";
-import config from "./config/config";
-import logger from "./config/logger";
+import { config, logger, connectMongo } from "./config";
+import { SearchConsumer } from "./middlewares";
+
+const searchConsumer = new SearchConsumer();
 
 let server: any;
-mongoose.connect(config.db.mongo.mongoURI).then(() => {
+connectMongo().then(() => {
   logger.debug("Connected to MongoDB");
-  server = app.listen(config.interfacePort, () => {
-    logger.info(`
-        ################################################
-        🚀 Interface Service listening on port: ${config.interfacePort} 🚀
-        ################################################
-    `);
+  searchConsumer.consumeTopics().then(() => {
+    logger.debug("Connected to Kafka Topics");
+    server = app.listen(config.interfacePort, () => {
+      logger.info(`
+          ################################################
+          🚀 Interface Service listening on port: ${config.interfacePort} 🚀
+          ################################################
+      `);
+    });
   });
 });
 

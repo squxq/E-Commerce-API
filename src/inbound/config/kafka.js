@@ -1,83 +1,12 @@
 /* eslint-disable max-classes-per-file */
-const httpStatus = require("http-status");
-const retry = require("async-retry");
 const kafkajs = require("kafkajs");
 const logger = require("./logger");
 const { kafka } = require("./config");
-const ApiError = require("../utils/ApiError");
 
 const sleep = (timeout) => {
   // eslint-disable-next-line no-promise-executor-return
   return new Promise((resolve) => setTimeout(resolve, timeout));
 };
-
-class KafkaJsConsumer {
-  constructor(topic, config, broker) {
-    this.topic = topic;
-    this.kafka = new kafkajs.Kafka({
-      clientId: "E-Commerce-API",
-      brokers: [broker],
-      ssl: true,
-      sasl: {
-        mechanism: "plain",
-        username: kafka.apiKey,
-        password: kafka.apiSecret,
-      },
-      connectionTimeout: 1000,
-      requestTimeout: 30000,
-    });
-    this.consumer = this.kafka.consumer(config);
-  }
-
-  async connect() {
-    try {
-      await this.consumer.connect();
-    } catch (err) {
-      logger.error("Failed to connect to Kafka.", err);
-      await sleep(5000);
-      await this.connect();
-    }
-  }
-
-  async consume(onMessage) {
-    await this.consumer.subscribe(this.topic);
-    await this.consumer.run({
-      eachMessage: async ({ message, partition }) => {
-        logger.debug(`Processing message partition: ${partition}`);
-        try {
-          await retry(async () => onMessage(message), {
-            retries: 3,
-            onRetry: (error, attempt) => logger.error(`Error consuming message, executing retry${attempt}/3.`, error),
-          });
-        } catch (err) {
-          throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, `Error consuming message. ${err}`, false);
-        }
-      },
-    });
-  }
-
-  async disconnect() {
-    await this.consumer.disconnect();
-  }
-}
-
-class ConsumerService {
-  constructor() {
-    this.consumers = [];
-  }
-
-  async consume({ topic, config, onMessage }) {
-    const consumer = new KafkaJsConsumer(topic, config, kafka.bootstrapURL);
-    await consumer.connect();
-    await consumer.consume(onMessage);
-    this.consumers.push(consumer);
-  }
-
-  async disconnect() {
-    const consumerPromises = this.consumers.map((consumer) => consumer.disconnect());
-    await Promise.all(consumerPromises);
-  }
-}
 
 class KafkaJsProducer {
   constructor(topic, broker) {
@@ -143,6 +72,5 @@ class ProducerService {
 }
 
 module.exports = {
-  ConsumerService,
   ProducerService,
 };
