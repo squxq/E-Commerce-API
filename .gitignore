@@ -52,4 +52,4 @@ temp
 *.save.*
 
 # CA Certificate
-./http_ca.crt
+http_ca.crt
