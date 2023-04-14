@@ -10,12 +10,11 @@ export class ElasticSearchMap {
   }
 
   async createMap(index: string, mapping: { properties: object }) {
-    const result = await this.client.indices.putMapping({
+    await this.client.indices.putMapping({
       index,
       ...mapping,
     });
 
     logger.debug(`Mapping added to index ${index}`);
-    logger.info(result);
   }
 }

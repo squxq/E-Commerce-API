@@ -31,8 +31,9 @@ const createProduct = catchAsync(async (req, res) => {
       brand: result.product.brand,
       category: result.category,
       variants: {
-        ...result.variants,
+        id: result.productItem.id,
         price: result.productItem.price,
+        ...result.variants,
       },
     });
 

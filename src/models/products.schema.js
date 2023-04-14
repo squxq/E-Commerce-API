@@ -28,6 +28,18 @@ const productMapping = {
         },
       },
     },
+    variants: {
+      type: "nested",
+      dynamic: true,
+      properties: {
+        id: {
+          type: "keyword",
+        },
+        price: {
+          type: "integer",
+        },
+      },
+    },
   },
 };
 
@@ -65,7 +77,7 @@ const productAVROSchema = {
     },
   ],
   validate: {
-    on_write: "(variants.price !== null) && (Object.keys(variants).length > 1)",
+    on_write: "(variants.price !== null) && (variants.id !== null) && (Object.keys(variants).length > 1)",
   },
   name: "ProductsSchema",
   namespace: "com.ecommerceapi",
@@ -85,7 +97,7 @@ const idAVROSchema = {
 };
 
 // creating a elasticsearch mapping
-// elasticsearchMap.createMap("products", productMapping).catch((err) => console.log(err.meta.body));
+elasticsearchMap.createMap("products", productMapping).catch((err) => console.log(err.meta.body));
 
 module.exports = {
   avro: {

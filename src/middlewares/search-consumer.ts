@@ -1,17 +1,18 @@
-const { ConsumerService } = require("../config/kafka");
-const { RegisterClass } = require("../models/plugins/index");
-const logger = require("../config/logger");
-const { kafka } = require("../config/config");
+import { ConsumerService } from "../config/kafka";
+import { RegisterClass } from "../models/plugins/index";
+import * as logger from "../config/logger";
+import { kafka } from "../config/config";
+import { elasticClient } from "../config/db";
 
 const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret);
 
 export class SearchConsumer {
-  private readonly consumerService: typeof ConsumerService;
+  private readonly consumerService: ConsumerService;
   constructor() {
     this.consumerService = new ConsumerService();
   }
 
-  private async consume(topic: string, groupId: string) {
+  private async consume(topic: string, groupId: string, action: any) {
     await this.consumerService.consume({
       topic: { topics: [topic] },
       config: { groupId },
@@ -21,16 +22,35 @@ export class SearchConsumer {
         logger.debug(decodedKey);
         logger.debug(decodedValue);
 
-        // direct the info to elasticsaerch
+        // key === id and value === the rest of the object
+        await action(decodedKey, decodedValue, topic);
       },
     });
 
     logger.debug(`Connected to '${topic}' topic!`);
   }
 
+  private async consumeProducts(decodedKey: { id: string }, decodedValue: { variants?: object }, topic: string) {
+    const variants = decodedValue.variants;
+    delete decodedValue.variants;
+
+    const doc: object = {
+      id: decodedKey.id,
+      ...decodedValue,
+      variants: [variants],
+    };
+
+    await elasticClient.index({
+      index: topic.toLowerCase(),
+      document: doc,
+    });
+  }
+
+  // private async consumeProductItems()
+
   async consumeTopics() {
-    await this.consume("Products", "ProductConsumer");
-    // await this.consume("ProductItems");
+    await this.consume("Products", "ProductConsumer", this.consumeProducts);
+    // await this.consume("ProductItems", "ProductItemConsumer");
   }
 }
 

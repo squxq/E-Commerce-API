@@ -1,8 +1,8 @@
-const httpStatus = require("http-status");
-const retry = require("async-retry");
-const logger = require("./logger.js");
-const { kafka } = require("./config.js");
-const ApiError = require("../utils/ApiError.js");
+import * as httpStatus from "http-status";
+import * as retry from "async-retry";
+import * as logger from "./logger";
+import { kafka } from "./config";
+const ApiError = require("../utils/ApiError");
 
 import { Consumer, Producer, ConsumerConfig, ConsumerSubscribeTopics, Kafka, KafkaMessage, Message } from "kafkajs";
 
