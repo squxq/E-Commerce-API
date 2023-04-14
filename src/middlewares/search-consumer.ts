@@ -35,22 +35,35 @@ export class SearchConsumer {
     delete decodedValue.variants;
 
     const doc: object = {
-      id: decodedKey.id,
       ...decodedValue,
       variants: [variants],
     };
 
     await elasticClient.index({
       index: topic.toLowerCase(),
+      id: decodedKey.id,
       document: doc,
     });
   }
 
-  // private async consumeProductItems()
+  private async consumeProductItems(decodedKey: { id: string }, decodedValue: { variants?: object }, _topic: string) {
+    await elasticClient.update({
+      index: "products",
+      id: decodedKey.id,
+      body: {
+        script: {
+          source: "ctx._source.variants.add(params.newVariant)",
+          params: {
+            newVariant: decodedValue.variants,
+          },
+        },
+      },
+    });
+  }
 
   async consumeTopics() {
     await this.consume("Products", "ProductConsumer", this.consumeProducts);
-    // await this.consume("ProductItems", "ProductItemConsumer");
+    await this.consume("ProductItems", "ProductItemConsumer", this.consumeProductItems);
   }
 }
 

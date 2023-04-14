@@ -5,9 +5,6 @@ const elasticsearchMap = new ElasticSearchMap();
 // elasticsearch mapping
 const productMapping = {
   properties: {
-    id: {
-      type: "keyword",
-    },
     category: {
       type: "keyword",
     },

@@ -1,4 +1,4 @@
-module.exports = {
+const productItemAVROSchema = {
   fields: [
     {
       name: "variants",
@@ -10,9 +10,15 @@ module.exports = {
     },
   ],
   validate: {
-    on_write: "(variants.price !== null) && (Object.keys(variants).length > 1)",
+    on_write: "(variants.price !== null) && (variants.id !== null) && (Object.keys(variants).length > 1)",
   },
   name: "ProductItemsSchema",
   namespace: "com.ecommerceapi",
   type: "record",
+};
+
+module.exports = {
+  avro: {
+    productItem: productItemAVROSchema,
+  },
 };

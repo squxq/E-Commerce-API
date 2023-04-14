@@ -106,15 +106,16 @@ const createProductItem = catchAsync(async (req, res) => {
   const result = await inboundProductService.createProductItem(productId, quantity, price, options, req.files);
 
   if ("productItem" in result) {
-    const encodedPayload = await register.encodePayload(ProductItems, {
+    const encodedPayload = await register.encodePayload(ProductItems.avro.productItem, {
       variants: {
-        ...result.variants,
+        id: result.productItem.id,
         price: result.productItem.price,
+        ...result.variants,
       },
     });
 
     await producer.produce("ProductItems", {
-      key: result.productItem.product_id,
+      key: await register.encodePayload(Products.avro.id, { id: result.productItem.product_id }),
       value: encodedPayload,
     });
   }
