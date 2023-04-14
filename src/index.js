@@ -1,18 +1,23 @@
 const app = require("./app");
-const config = require("../config/config");
-const logger = require("../config/logger");
-const { prismaInbound, connectMongo } = require("../config/db");
+const config = require("./config/config");
+const logger = require("./config/logger");
+const { prismaInbound, connectMongo, elasticClient } = require("./config/db");
+const { searchConsumer } = require("./middlewares/search-consumer");
 
 // Express usual app.listen()
 let server;
 connectMongo().then(() => {
   prismaInbound.$connect().then(() => {
-    server = app.listen(config.ports.inboundPort, () => {
-      logger.info(`
-          ##############################################
-          🚀 Inbound Service listening on port: ${config.ports.inboundPort} 🚀
-          ##############################################
-      `);
+    searchConsumer.consumeTopics().then(() => {
+      elasticClient.connect().then(() => {
+        server = app.listen(config.port, () => {
+          logger.info(`
+              ##############################################
+              🚀 Server listening on port: ${config.port} 🚀
+              ##############################################
+          `);
+        });
+      });
     });
   });
 });

@@ -1,4 +1,5 @@
 const fs = require("fs");
+const httpStatus = require("http-status");
 const { PrismaClient } = require("@prisma/client");
 const { Client } = require("@elastic/elasticsearch");
 const mongoose = require("mongoose");
@@ -63,7 +64,7 @@ function onReconnected() {
   logger.warn("MongoDB Atlas reconnected!");
 }
 
-function onSIGINT() {
+function onSIGINT(db) {
   // eslint-disable-next-line no-undef
   db.close(() => {
     logger.warn("MongoDB Atlas default connection disconnected through app termination!");
@@ -76,18 +77,29 @@ function connectMongo() {
   const connection = mongoose.connect(config.db.mongo.mongoURI, config.db.mongo.options);
   const db = mongoose.connection;
 
-  db.on("error", onError);
+  db.on("error", (err) => onError(err));
   db.on("connected", onConnected);
   db.on("reconnected", onReconnected);
 
-  process.on("SIGINT", onSIGINT);
+  process.on("SIGINT", () => onSIGINT(db));
   return connection;
 }
 
 // prisma Middleware
 prismaInbound.$use(prismaMiddleware);
 
-const elasticClient = new Client({
+class ElasticsearchClient extends Client {
+  async connect() {
+    try {
+      await this.ping();
+      logger.debug("Connected to Elasticsearch!");
+    } catch (err) {
+      throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, `Failed to connect to Elasticsearch: ${err.message}`, false);
+    }
+  }
+}
+
+const elasticClient = new ElasticsearchClient({
   node: config.elastic.elasticSearchURI,
   auth: {
     username: config.elastic.elasticSearchUsername,

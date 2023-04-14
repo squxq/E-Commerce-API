@@ -1,7 +1,8 @@
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
 const { productService } = require("../services");
-const { ProducerService } = require("../../dist/config/kafka");
+// eslint-disable-next-line import/no-unresolved, import/extensions
+const { ProducerService } = require("../config/kafka");
 const { Products, ProductItems } = require("../models");
 const { RegisterClass } = require("../models/plugins");
 const { kafka } = require("../config/config");

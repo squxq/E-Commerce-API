@@ -1,19 +1,19 @@
 "use strict";
-const { ConsumerService } = require("../config/kafka.ts");
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.searchConsumer = exports.SearchConsumer = void 0;
+const { ConsumerService } = require("../config/kafka");
 const { RegisterClass } = require("../models/plugins/index");
 const logger = require("../config/logger");
 const { kafka } = require("../config/config");
 const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret);
-const consumerService = new ConsumerService();
 class SearchConsumer {
-    consumerService;
     constructor() {
-        this.consumerService = consumerService;
+        this.consumerService = new ConsumerService();
     }
-    async consume(topic) {
+    async consume(topic, groupId) {
         await this.consumerService.consume({
             topic: { topics: [topic] },
-            config: { groupId: "ProductConsumer" },
+            config: { groupId },
             onMessage: async (message) => {
                 const decodedKey = await register.decodePayload(message.key);
                 const decodedValue = await register.decodePayload(message.value);
@@ -21,12 +21,12 @@ class SearchConsumer {
                 logger.debug(decodedValue);
             },
         });
+        logger.debug(`Connected to '${topic}' topic!`);
     }
-    async consumeSearch() {
-        await this.consume("Products");
-        // await this.consume("ProductItems");
+    async consumeTopics() {
+        await this.consume("Products", "ProductConsumer");
     }
 }
-const searchConsumer = new SearchConsumer();
-searchConsumer.consumeSearch();
+exports.SearchConsumer = SearchConsumer;
+exports.searchConsumer = new SearchConsumer();
 //# sourceMappingURL=search-consumer.js.map

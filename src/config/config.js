@@ -7,8 +7,7 @@ dotenv.config({ path: path.join(__dirname, "../../.env") });
 const envVarsSchema = Joi.object()
   .keys({
     NODE_ENV: Joi.string().valid("production", "development", "test").required(),
-    INBOUND_PORT: Joi.number().default(5000),
-    INTERFACE_PORT: Joi.number().default(5000),
+    PORT: Joi.number().default(5000),
     JWT_SECRET: Joi.string().required().description("JWT secret key"),
     JWT_ACCESS_EXPIRATION_MINUTES: Joi.number().default(30).description("minutes after which access tokens expire"),
     JWT_REFRESH_EXPIRATION_DAYS: Joi.number().default(30).description("days after which refresh tokens expire"),
@@ -51,10 +50,7 @@ if (error) {
 
 module.exports = {
   env: envVars.NODE_ENV,
-  ports: {
-    inboundPort: envVars.INBOUND_PORT,
-    interfacePort: envVars.INTERFACE_PORT,
-  },
+  port: envVars.PORT,
   jwt: {
     secret: envVars.JWT_SECRET,
     accessExpirationMinutes: envVars.JWT_ACCESS_EXPIRATION_MINUTES,

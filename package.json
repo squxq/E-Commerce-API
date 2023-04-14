@@ -3,17 +3,20 @@
   "version": "1.0.0",
   "description": "E-Commerce API with all major functionalities",
   "bin": "bin/createApp.js",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "repository": "https://github.com/squxq/E-Commerce-API.git",
+  "bugs": {
+    "url": "https://github.com/squxq/E-Commerce-API/issues"
+  },
   "author": "squxq <franciscotomas0430@gmail.com>",
   "license": "MIT",
   "engines": {
     "node": ">=19.0.0"
   },
   "scripts": {
-    "build": "tsc",
-    "inbound:dev": "cross-env NODE_ENV=development nodemon src/inbound/index.js",
-    "interface:dev": "cross-env NODE_ENV=development nodemon src/interface/index.js",
+    "compile": "tsc --build",
+    "compile:watch": "tsc --build --watch",
+    "dev": "cross-env NODE_ENV=development nodemon dist/index.js",
     "test": "jest -i --colors --verbose --detectOpenHandles",
     "test:watch": "jest -i --watchAll",
     "coverage": "jest -i --coverage",

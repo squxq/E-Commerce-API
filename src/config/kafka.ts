@@ -30,8 +30,8 @@ class KafkaJsConsumer implements IConsumer {
         username: kafka.apiKey,
         password: kafka.apiSecret,
       },
-      connectionTimeout: 1000,
-      requestTimeout: 30000,
+      // connectionTimeout: 1000,
+      // requestTimeout: 30000,
     });
     this.consumer = this.kafka.consumer(config);
   }

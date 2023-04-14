@@ -11,9 +11,6 @@ const sleep = (timeout) => {
     return new Promise((resolve) => setTimeout(resolve, timeout));
 };
 class KafkaJsConsumer {
-    topic;
-    kafka;
-    consumer;
     constructor(topic, config, broker) {
         this.topic = topic;
         this.kafka = new kafkajs_1.Kafka({
@@ -25,8 +22,6 @@ class KafkaJsConsumer {
                 username: kafka.apiKey,
                 password: kafka.apiSecret,
             },
-            connectionTimeout: 1000,
-            requestTimeout: 30000,
         });
         this.consumer = this.kafka.consumer(config);
     }
@@ -62,7 +57,9 @@ class KafkaJsConsumer {
     }
 }
 class ConsumerService {
-    consumers = [];
+    constructor() {
+        this.consumers = [];
+    }
     async consume({ topic, config, onMessage }) {
         const consumer = new KafkaJsConsumer(topic, config, kafka.bootstrapURL);
         await consumer.connect();
@@ -77,9 +74,6 @@ class ConsumerService {
 }
 exports.ConsumerService = ConsumerService;
 class KafkaJsProducer {
-    topic;
-    kafka;
-    producer;
     constructor(topic, broker) {
         this.topic = topic;
         this.kafka = new kafkajs_1.Kafka({
@@ -114,7 +108,9 @@ class KafkaJsProducer {
     }
 }
 class ProducerService {
-    producers = new Map();
+    constructor() {
+        this.producers = new Map();
+    }
     async produce(topic, message) {
         const producer = await this.getProducer(topic);
         await producer.produce(message);

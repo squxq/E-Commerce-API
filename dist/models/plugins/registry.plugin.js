@@ -1,5 +1,5 @@
 "use strict";
-const { SchemaRegistry, SchemaType } = require("@kafkajs/confluent-schema-registry");
+const { SchemaRegistry, SchemaType, COMPATIBILITY: { BACKWARD }, } = require("@kafkajs/confluent-schema-registry");
 class RegisterService {
     constructor(host, apiKey, apiSecret) {
         this.registry = new SchemaRegistry({
@@ -14,7 +14,7 @@ class RegisterService {
         const { id } = await this.registry.register({
             type: SchemaType.AVRO,
             schema: JSON.stringify(schema),
-        });
+        }, { compatibility: BACKWARD });
         return id;
     }
     async encodePayload(schema, payload) {
