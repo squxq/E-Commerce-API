@@ -6,7 +6,7 @@ yarn-error.log
 !.env*.example
 
 # vscode
-.vscode
+.vscode/
 
 # python
 venv
@@ -29,7 +29,7 @@ node_modules
 *.pem
 
 # Ignore built files
-./dist
+dist/
 
 # ignore test converage
 coverage
