@@ -1,5 +1,7 @@
 const Joi = require("joi");
 
+// inbound
+
 const createProduct = {
   body: Joi.object().keys({
     categoryId: Joi.string()
@@ -152,6 +154,17 @@ const deleteProductItem = {
   }),
 };
 
+// interface
+
+const getProduct = {
+  params: Joi.object().keys({
+    productId: Joi.string()
+      .required()
+      .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Id"),
+  }),
+};
+
 module.exports = {
   createProduct,
   updateProduct,
@@ -159,4 +172,5 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
+  getProduct,
 };

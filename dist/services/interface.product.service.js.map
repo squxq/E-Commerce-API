@@ -1,0 +1,1 @@
+{"version":3,"file":"interface.product.service.js","sourceRoot":"","sources":["../../src/services/interface.product.service.js"],"names":[],"mappings":";AAAA,MAAM,UAAU,GAAG,OAAO,CAAC,qBAAqB,CAAC,CAAC;AAElD,MAAM,UAAU,GAAG,UAAU,CAAC,KAAK,IAAI,EAAE;IACvC,OAAO,EAAE,OAAO,EAAE,aAAa,EAAE,CAAC;AACpC,CAAC,CAAC,CAAC;AAEH,MAAM,CAAC,OAAO,GAAG;IACf,UAAU;CACX,CAAC"}

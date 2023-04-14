@@ -1,11 +1,13 @@
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
-const { productService } = require("../services");
+const { inboundProductService, interfaceProductService } = require("../services");
 // eslint-disable-next-line import/no-unresolved, import/extensions
 const { ProducerService } = require("../config/kafka");
 const { Products, ProductItems } = require("../models");
 const { RegisterClass } = require("../models/plugins");
 const { kafka } = require("../config/config");
+
+// inbound
 
 const producer = new ProducerService();
 const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.schemaSecret);
@@ -19,10 +21,10 @@ const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.sche
  * @returns { JSON }
  */
 const createProduct = catchAsync(async (req, res) => {
-  const result = await productService.createProduct(req.body, req.files);
+  const result = await inboundProductService.createProduct(req.body, req.files);
 
   if ("product" in result) {
-    const encodedPayload = await register.encodePayload(Products[1], {
+    const encodedPayload = await register.encodePayload(Products.avro.product, {
       name: result.product.name,
       description: result.product.description,
       image: result.product.image,
@@ -35,7 +37,7 @@ const createProduct = catchAsync(async (req, res) => {
     });
 
     await producer.produce("Products", {
-      key: await register.encodePayload(Products[0], { id: result.product.id }),
+      key: await register.encodePayload(Products.avro.id, { id: result.product.id }),
       value: encodedPayload,
     });
   }
@@ -60,7 +62,7 @@ const createProduct = catchAsync(async (req, res) => {
  * @returns { JSON }
  */
 const updateProduct = catchAsync(async (req, res) => {
-  const result = await productService.updateProduct(req.body, req.file);
+  const result = await inboundProductService.updateProduct(req.body, req.file);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
@@ -77,7 +79,7 @@ const updateProduct = catchAsync(async (req, res) => {
  * @returns { JSON }
  */
 const deleteProduct = catchAsync(async (req, res) => {
-  const result = await productService.deleteProduct(req.params.productId);
+  const result = await inboundProductService.deleteProduct(req.params.productId);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
@@ -100,7 +102,7 @@ const deleteProduct = catchAsync(async (req, res) => {
  */
 const createProductItem = catchAsync(async (req, res) => {
   const { productId, quantity, price, options } = req.body;
-  const result = await productService.createProductItem(productId, quantity, price, options, req.files);
+  const result = await inboundProductService.createProductItem(productId, quantity, price, options, req.files);
 
   if ("productItem" in result) {
     const encodedPayload = await register.encodePayload(ProductItems, {
@@ -135,7 +137,7 @@ const createProductItem = catchAsync(async (req, res) => {
  * @returns { JSON }
  */
 const updateProductItem = catchAsync(async (req, res) => {
-  const result = await productService.updateProductItem(req.body, req.files);
+  const result = await inboundProductService.updateProductItem(req.body, req.files);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
@@ -153,11 +155,23 @@ const updateProductItem = catchAsync(async (req, res) => {
  * @returns { JSON }
  */
 const deleteProductItem = catchAsync(async (req, res) => {
-  const result = await productService.deleteProductItem(req.params.productItemId, req.query.save);
+  const result = await inboundProductService.deleteProductItem(req.params.productItemId, req.query.save);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
     message: req.polyglot.t("successProductItemDelete"),
+    output: result,
+  });
+});
+
+// interface
+
+const getProduct = catchAsync(async (req, res) => {
+  const result = await interfaceProductService.getProduct();
+
+  return res.status(httpStatus.OK).json({
+    type: "Success",
+    message: req.polyglot.t("successProductGetSingle"),
     output: result,
   });
 });
@@ -169,4 +183,5 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
+  getProduct,
 };

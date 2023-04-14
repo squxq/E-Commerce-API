@@ -13,7 +13,7 @@ const { authLimiter } = require("./middlewares/rateLimiter");
 const { errorConverter, errorHandler } = require("./middlewares/error");
 const ApiError = require("./utils/ApiError");
 const startPolyglot = require("./utils/startPolyglot");
-const routes = require("./routes/v1");
+const { inboundRoutes, interfaceRoutes } = require("./routes");
 
 const app = express();
 if (config.env !== "test") {
@@ -60,7 +60,8 @@ if (config.env === "production") {
 }
 
 // v1 api routes
-app.use("/inbound/api/v1", routes);
+app.use("/inbound/api/v1", inboundRoutes);
+app.use("/interface/api/v1", interfaceRoutes);
 // app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(docs));
 
 app.all(`"*"`, (req, res, next) => {
