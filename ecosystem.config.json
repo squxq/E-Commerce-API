@@ -1,20 +1,8 @@
 {
   "apps": [
     {
-      "name": "inbound-api",
-      "script": "src/inbound/index.js",
-      "instances": 1,
-      "autorestart": true,
-      "watch": false,
-      "time": true,
-      "env": {
-        "NODE_ENV": "production"
-      }
-    },
-    {
-      "name": "interface-api",
-      "script": "dist/interface/index.js",
-      "node_args": "--experimental-modules --es-module-specifier-resolution=node",
+      "name": "E-Commerce-API",
+      "script": "dist/index.js",
       "instances": 1,
       "autorestart": true,
       "watch": false,
