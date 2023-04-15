@@ -19,7 +19,7 @@ export class SearchConsumer {
       CREATE_PRODUCT: this.createProducts,
       CREATE_ITEM: this.createProductItems,
       UPDATE_PRODUCT: this.updateProducts,
-      // UPDATE_ITEM: function4,
+      UPDATE_ITEM: this.updateProductItems,
       // DELETE_PRODUCT: function5,
       // DELETE_ITEM: function6,
     };
@@ -77,15 +77,37 @@ export class SearchConsumer {
     });
   }
 
-  private async updateProducts(id: string, decodedValue: object) {
+  private async updateProducts(id: string, decodedValue: { changes?: object }) {
     await elasticClient.update({
       index: "products",
       id,
-      doc: decodedValue,
+      doc: decodedValue.changes,
     });
   }
-  private async updateProductItems(id: string, decodedValue: object) {
-    // await
+  private async updateProductItems(id: string, decodedValue: { changes?: { id?: string } }) {
+    const itemId = decodedValue?.changes?.id;
+    delete decodedValue?.changes?.id;
+
+    await elasticClient.update({
+      index: "products",
+      id,
+      script: {
+        source: `
+          for (def i = 0; i < ctx._source.variants.length; i++) {
+            if (ctx._source.variants[i].id == params.itemId) {
+              def updatedProperties = params.updatedProperties.entrySet();
+              for (def entry : updatedProperties) {
+                ctx._source.variants[i][entry.getKey()] = entry.getValue();
+              }
+            }
+          }
+        `,
+        params: {
+          itemId,
+          updatedProperties: decodedValue.changes,
+        },
+      },
+    });
   }
 
   async consumeTopics() {

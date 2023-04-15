@@ -807,7 +807,7 @@ class CreateProductItem {
       RETURNING id, category_id, name, description, image
     `;
 
-    return { newProduct, newProductItems };
+    return { newProduct: newProduct[0], newProductItems };
   }
 }
 
@@ -967,20 +967,28 @@ const updateProduct = catchAsync(async (data, image) => {
   }
 
   const updateProductCategoryTransaction = await prismaInbound.$transaction(async (prisma) => {
-    const result = await prisma.product.update({
-      where: {
-        id: productId,
-      },
-      data,
-      select: {
-        id: true,
-        category_id: true,
-        name: true,
-        description: true,
-        image: true,
-        brand: true,
-      },
-    });
+    const result = await prisma.product
+      .update({
+        where: {
+          id: productId,
+        },
+        data,
+        select: {
+          id: true,
+          category_id: true,
+          name: true,
+          description: true,
+          image: true,
+          brand: true,
+        },
+      })
+      .catch((err) => {
+        if (err.code === "P2002" && ["category_id", "name"].every((element) => err.meta.target.includes(element))) {
+          throw new ApiError(httpStatus.BAD_REQUEST, `Duplicate product name provided! ${data.name} is already in use.`);
+        }
+
+        throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, err.message, false);
+      });
 
     if (data.image) {
       const newPublicId = `${product.image.substring(0, product.image.lastIndexOf("/") + 1)}${product.image

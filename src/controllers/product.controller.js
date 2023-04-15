@@ -66,7 +66,9 @@ const updateProduct = catchAsync(async (req, res) => {
   const result = await inboundProductService.updateProduct(req.body, req.file);
 
   if ("product" in result) {
-    const encodedPayload = await register.encodePayload(Products.avro.productUpdate, result.changes);
+    const encodedPayload = await register.encodePayload(Products.avro.productUpdate, {
+      changes: result.changes,
+    });
 
     await producer.produce("Products", {
       key: await register.encodePayload(Ids, { id: result.product.id, action: "UPDATE", content: "PRODUCT" }),
@@ -152,9 +154,20 @@ const createProductItem = catchAsync(async (req, res) => {
 const updateProductItem = catchAsync(async (req, res) => {
   const result = await inboundProductService.updateProductItem(req.body, req.files);
 
-  // if ("productItem" in result) {
+  if ("productItem" in result) {
+    const encodedPayload = await register.encodePayload(Products.avro.productItemUpdate, {
+      changes: {
+        id: result.productItem.id,
+        price: result.price || null,
+        ...(result.options || {}),
+      },
+    });
 
-  // }
+    await producer.produce("Products", {
+      key: await register.encodePayload(Ids, { id: result.productItem.product_id, action: "UPDATE", content: "ITEM" }),
+      value: encodedPayload,
+    });
+  }
 
   delete result.price;
   delete result.options;
