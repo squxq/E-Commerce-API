@@ -1253,7 +1253,7 @@ const deleteProductItem = catchAsync(async (productItemId, save) => {
         AND b.id != (SELECT id FROM product_item_id)
     `;
 
-  if (validateProductItem.length === 0) {
+  if (!validateProductItem[0].item_id) {
     throw new ApiError(httpStatus.BAD_REQUEST, `Product Item: ${productItemId} not found!`);
   }
 

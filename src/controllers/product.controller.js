@@ -95,6 +95,13 @@ const updateProduct = catchAsync(async (req, res) => {
 const deleteProduct = catchAsync(async (req, res) => {
   const result = await inboundProductService.deleteProduct(req.params.productId);
 
+  if ("product" in result) {
+    await producer.produce("Products", {
+      key: await register.encodePayload(Ids, { id: result.product.id, action: "DELETE", content: "PRODUCT" }),
+      value: await register.encodePayload(Ids, { id: result.product.id }),
+    });
+  }
+
   return res.status(httpStatus.OK).json({
     type: "Success",
     message: req.polyglot.t("successProductDelete"),
@@ -189,6 +196,13 @@ const updateProductItem = catchAsync(async (req, res) => {
  */
 const deleteProductItem = catchAsync(async (req, res) => {
   const result = await inboundProductService.deleteProductItem(req.params.productItemId, req.query.save);
+
+  if ("productItem" in result) {
+    await producer.produce("Products", {
+      key: await register.encodePayload(Ids, { id: result.productItem.product_id, action: "DELETE", content: "ITEM" }),
+      value: await register.encodePayload(Ids, { id: result.productItem.id }),
+    });
+  }
 
   return res.status(httpStatus.OK).json({
     type: "Success",

@@ -20,8 +20,8 @@ export class SearchConsumer {
       CREATE_ITEM: this.createProductItems,
       UPDATE_PRODUCT: this.updateProducts,
       UPDATE_ITEM: this.updateProductItems,
-      // DELETE_PRODUCT: function5,
-      // DELETE_ITEM: function6,
+      DELETE_PRODUCT: this.deleteProducts,
+      DELETE_ITEM: this.deleteProductItems,
     };
   }
 
@@ -32,7 +32,7 @@ export class SearchConsumer {
       onMessage: async (message: { key: any; value: any }) => {
         const decodedKey = await register.decodePayload(message.key);
         const decodedValue = await register.decodePayload(message.value);
-        logger.debug(decodedKey);
+        decodedKey && logger.debug(decodedKey);
         logger.debug(decodedValue);
 
         // key === { id, action, content } and value === the rest of the object
@@ -84,6 +84,7 @@ export class SearchConsumer {
       doc: decodedValue.changes,
     });
   }
+
   private async updateProductItems(id: string, decodedValue: { changes?: { id?: string } }) {
     const itemId = decodedValue?.changes?.id;
     delete decodedValue?.changes?.id;
@@ -105,6 +106,32 @@ export class SearchConsumer {
         params: {
           itemId,
           updatedProperties: decodedValue.changes,
+        },
+      },
+    });
+  }
+
+  private async deleteProducts(id: string) {
+    await elasticClient.delete({
+      index: "products",
+      id,
+    });
+  }
+
+  private async deleteProductItems(id: string, decodedValue: { id?: string }) {
+    await elasticClient.update({
+      index: "products",
+      id,
+      script: {
+        source: `
+          for (int i = ctx._source.variants.length-1; i >= 0; i--) {
+            if (ctx._source.variants[i].id == params.itemId) {
+              ctx._source.variants.remove(i);
+            }
+          }
+        `,
+        params: {
+          itemId: decodedValue.id,
         },
       },
     });
