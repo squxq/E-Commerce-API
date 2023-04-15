@@ -1,3 +1,4 @@
+const logger = require("../config/logger");
 const { ElasticSearchMap } = require("./plugins");
 
 const elasticsearchMap = new ElasticSearchMap();
@@ -40,7 +41,7 @@ const productMapping = {
   },
 };
 
-const productAVROSchema = {
+const createProductAVROSchema = {
   fields: [
     {
       name: "category",
@@ -74,32 +75,79 @@ const productAVROSchema = {
     },
   ],
   validate: {
-    on_write: "(variants.price !== null) && (variants.id !== null) && (Object.keys(variants).length > 1)",
+    on_write: "(variants.price !== null) && (variants.id !== null) && (Object.keys(variants).length > 2)",
   },
-  name: "ProductsSchema",
+  name: "createProductAVROSchema",
   namespace: "com.ecommerceapi",
   type: "record",
 };
 
-const idAVROSchema = {
+const createProductItemAVROSchema = {
   fields: [
     {
-      name: "id",
-      type: "string",
+      name: "variants",
+      type: {
+        type: "map",
+        values: ["null", "string", "int"],
+      },
+      default: {},
     },
   ],
-  name: "IdsSchema",
+  validate: {
+    on_write: "(variants.price !== null) && (variants.id !== null) && (Object.keys(variants).length > 1)",
+  },
+  name: "createProductItemAVROSchema",
+  namespace: "com.ecommerceapi",
+  type: "record",
+};
+
+const updateProductAVROSchema = {
+  fields: [
+    {
+      name: "changes",
+      type: {
+        type: "map",
+        values: ["null", "string"],
+      },
+      default: {},
+    },
+  ],
+  validate: {
+    on_write: "Object.keys(changes).length > 0",
+  },
+  name: "updateProductAVROSchema",
+  namespace: "com.ecommerceapi",
+  type: "record",
+};
+
+const udpateProductItemAVROSchema = {
+  fields: [
+    {
+      name: "changes",
+      type: {
+        type: "map",
+        values: ["null", "string", "int"],
+      },
+      default: {},
+    },
+  ],
+  validate: {
+    on_write: "(changes.id !== null) && Object.keys(changes).length > 1",
+  },
+  name: "udpateProductItemAVROSchema",
   namespace: "com.ecommerceapi",
   type: "record",
 };
 
 // creating a elasticsearch mapping
-elasticsearchMap.createMap("products", productMapping).catch((err) => console.log(err.meta.body));
+elasticsearchMap.createMap("products", productMapping).catch((err) => logger.error(err.meta.body));
 
 module.exports = {
   avro: {
-    id: idAVROSchema,
-    product: productAVROSchema,
+    productCreate: createProductAVROSchema,
+    productItemCreate: createProductItemAVROSchema,
+    productUpdate: updateProductAVROSchema,
+    productItemUpdate: udpateProductItemAVROSchema,
   },
   map: {
     product: productMapping,

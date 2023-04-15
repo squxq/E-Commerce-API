@@ -8,11 +8,24 @@ const register = new RegisterClass(kafka.schemaHost, kafka.schemaKey, kafka.sche
 
 export class SearchConsumer {
   private readonly consumerService: ConsumerService;
+  private lookupMap: {
+    [key: string]: (id: string, decodedValue: object) => void;
+  };
+
   constructor() {
     this.consumerService = new ConsumerService();
+
+    this.lookupMap = {
+      CREATE_PRODUCT: this.createProducts,
+      CREATE_ITEM: this.createProductItems,
+      UPDATE_PRODUCT: this.updateProducts,
+      // UPDATE_ITEM: function4,
+      // DELETE_PRODUCT: function5,
+      // DELETE_ITEM: function6,
+    };
   }
 
-  private async consume(topic: string, groupId: string, action: any) {
+  private async consume(topic: string, groupId: string) {
     await this.consumerService.consume({
       topic: { topics: [topic] },
       config: { groupId },
@@ -22,15 +35,20 @@ export class SearchConsumer {
         logger.debug(decodedKey);
         logger.debug(decodedValue);
 
-        // key === id and value === the rest of the object
-        await action(decodedKey, decodedValue, topic);
+        // key === { id, action, content } and value === the rest of the object
+        // check first for action and the for content
+
+        // await action(decodedKey, decodedValue, topic);
+        const consumeFunction = this.lookupMap[`${decodedKey.action}_${decodedKey.content}`];
+
+        consumeFunction && consumeFunction(decodedKey.id, decodedValue);
       },
     });
 
     logger.debug(`Connected to '${topic}' topic!`);
   }
 
-  private async consumeProducts(decodedKey: { id: string }, decodedValue: { variants?: object }, topic: string) {
+  private async createProducts(id: string, decodedValue: { variants?: object }) {
     const variants = decodedValue.variants;
     delete decodedValue.variants;
 
@@ -40,30 +58,38 @@ export class SearchConsumer {
     };
 
     await elasticClient.index({
-      index: topic.toLowerCase(),
-      id: decodedKey.id,
+      index: "products",
+      id,
       document: doc,
     });
   }
 
-  private async consumeProductItems(decodedKey: { id: string }, decodedValue: { variants?: object }, _topic: string) {
+  private async createProductItems(id: string, decodedValue: { variants?: object }) {
     await elasticClient.update({
       index: "products",
-      id: decodedKey.id,
-      body: {
-        script: {
-          source: "ctx._source.variants.add(params.newVariant)",
-          params: {
-            newVariant: decodedValue.variants,
-          },
+      id,
+      script: {
+        source: "ctx._source.variants.add(params.newVariant)",
+        params: {
+          newVariant: decodedValue.variants,
         },
       },
     });
   }
 
+  private async updateProducts(id: string, decodedValue: object) {
+    await elasticClient.update({
+      index: "products",
+      id,
+      doc: decodedValue,
+    });
+  }
+  private async updateProductItems(id: string, decodedValue: object) {
+    // await
+  }
+
   async consumeTopics() {
-    await this.consume("Products", "ProductConsumer", this.consumeProducts);
-    await this.consume("ProductItems", "ProductItemConsumer", this.consumeProductItems);
+    await this.consume("Products", "ProductConsumer");
   }
 }
 

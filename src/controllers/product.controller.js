@@ -3,7 +3,7 @@ const catchAsync = require("../utils/catchAsync");
 const { inboundProductService, interfaceProductService } = require("../services");
 // eslint-disable-next-line import/no-unresolved, import/extensions
 const { ProducerService } = require("../config/kafka");
-const { Products, ProductItems } = require("../models");
+const { Products, Ids } = require("../models");
 const { RegisterClass } = require("../models/plugins");
 const { kafka } = require("../config/config");
 
@@ -24,7 +24,7 @@ const createProduct = catchAsync(async (req, res) => {
   const result = await inboundProductService.createProduct(req.body, req.files);
 
   if ("product" in result) {
-    const encodedPayload = await register.encodePayload(Products.avro.product, {
+    const encodedPayload = await register.encodePayload(Products.avro.productCreate, {
       name: result.product.name,
       description: result.product.description,
       image: result.product.image,
@@ -38,7 +38,7 @@ const createProduct = catchAsync(async (req, res) => {
     });
 
     await producer.produce("Products", {
-      key: await register.encodePayload(Products.avro.id, { id: result.product.id }),
+      key: await register.encodePayload(Ids, { id: result.product.id, action: "CREATE", content: "PRODUCT" }),
       value: encodedPayload,
     });
   }
@@ -64,6 +64,17 @@ const createProduct = catchAsync(async (req, res) => {
  */
 const updateProduct = catchAsync(async (req, res) => {
   const result = await inboundProductService.updateProduct(req.body, req.file);
+
+  if ("product" in result) {
+    const encodedPayload = await register.encodePayload(Products.avro.productUpdate, result.changes);
+
+    await producer.produce("Products", {
+      key: await register.encodePayload(Ids, { id: result.product.id, action: "UPDATE", content: "PRODUCT" }),
+      value: encodedPayload,
+    });
+  }
+
+  delete result.changes;
 
   return res.status(httpStatus.OK).json({
     type: "Success",
@@ -106,7 +117,7 @@ const createProductItem = catchAsync(async (req, res) => {
   const result = await inboundProductService.createProductItem(productId, quantity, price, options, req.files);
 
   if ("productItem" in result) {
-    const encodedPayload = await register.encodePayload(ProductItems.avro.productItem, {
+    const encodedPayload = await register.encodePayload(Products.avro.productItemCreate, {
       variants: {
         id: result.productItem.id,
         price: result.productItem.price,
@@ -114,8 +125,8 @@ const createProductItem = catchAsync(async (req, res) => {
       },
     });
 
-    await producer.produce("ProductItems", {
-      key: await register.encodePayload(Products.avro.id, { id: result.productItem.product_id }),
+    await producer.produce("Products", {
+      key: await register.encodePayload(Ids, { id: result.productItem.product_id, action: "CREATE", content: "ITEM" }),
       value: encodedPayload,
     });
   }
@@ -140,6 +151,13 @@ const createProductItem = catchAsync(async (req, res) => {
  */
 const updateProductItem = catchAsync(async (req, res) => {
   const result = await inboundProductService.updateProductItem(req.body, req.files);
+
+  // if ("productItem" in result) {
+
+  // }
+
+  delete result.price;
+  delete result.options;
 
   return res.status(httpStatus.OK).json({
     type: "Success",

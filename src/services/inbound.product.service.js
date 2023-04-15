@@ -1003,9 +1003,13 @@ const updateProduct = catchAsync(async (data, image) => {
       productItems = await updateNewProduct.updateSKUs(prisma, data.name, productId, result.image);
     }
 
+    // data contains the changes we made to the product
+
     return {
-      product: result,
-      [productItems && (productItems.length === 1 ? "productItem" : "productItems")]: productItems,
+      product: productItems.newProduct || result,
+      [productItems && (productItems.length === 1 ? "productItem" : "productItems")]:
+        productItems.newProductItems || undefined,
+      changes: data,
     };
   });
 
@@ -1151,23 +1155,26 @@ const updateProductItem = catchAsync(async (data, images, query) => {
   }
 
   let variationsIds;
+  let orderedOptions;
   if (data.options) {
     // check the allowed options for product configuration
     await updateNewProductItem.checkOptions();
 
     // re-generate sku
-    const { sku, orderedOptions } = updateNewProductItem.generateSKU(
+    const { sku, orderedOptions: ordOptions } = updateNewProductItem.generateSKU(
       productItem[0].category_name,
       productItem[0].product_name,
       productItem[0].product_brand
     );
+
+    orderedOptions = ordOptions;
 
     // eslint-disable-next-line no-param-reassign
     data.SKU = sku.join("-");
 
     variationsIds = await updateNewProductItem.verifyProductItemOptions(
       prismaInbound,
-      orderedOptions,
+      ordOptions,
       productItem[0].product_id
     );
 
@@ -1208,6 +1215,8 @@ const updateProductItem = catchAsync(async (data, images, query) => {
 
   return {
     ...updateProductItemTransaction,
+    price: data.price || undefined,
+    options: orderedOptions,
   };
 });
 
