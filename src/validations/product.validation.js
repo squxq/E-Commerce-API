@@ -156,12 +156,18 @@ const deleteProductItem = {
 
 // interface
 
-const getProduct = {
+const getProductItem = {
   params: Joi.object().keys({
-    productId: Joi.string()
+    productItemId: Joi.string()
       .required()
       .guid({ version: ["uuidv4", "uuidv5"] })
+      .label("Product Item Id"),
+  }),
+  query: Joi.object().keys({
+    productId: Joi.string()
+      .guid({ version: ["uuidv4", "uuidv5"] })
       .label("Product Id"),
+    currency: Joi.string().label("Currency ISO"),
   }),
 };
 
@@ -172,5 +178,5 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
-  getProduct,
+  getProductItem,
 };

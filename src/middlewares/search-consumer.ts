@@ -1,6 +1,6 @@
 import { ConsumerService } from "../config/kafka";
 import { RegisterClass } from "../models/plugins/index";
-import * as logger from "../config/logger";
+import logger from "../config/logger";
 import { kafka } from "../config/config";
 import { elasticClient } from "../config/db";
 

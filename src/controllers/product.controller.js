@@ -1,6 +1,6 @@
 const httpStatus = require("http-status");
 const catchAsync = require("../utils/catchAsync");
-const { inboundProductService, interfaceProductService } = require("../services");
+const { inboundProductService, InterfaceProductService } = require("../services");
 // eslint-disable-next-line import/no-unresolved, import/extensions
 const { ProducerService } = require("../config/kafka");
 const { Products, Ids } = require("../models");
@@ -213,8 +213,9 @@ const deleteProductItem = catchAsync(async (req, res) => {
 
 // interface
 
-const getProduct = catchAsync(async (req, res) => {
-  const result = await interfaceProductService.getProduct();
+const getProductItem = catchAsync(async (req, res) => {
+  const interfaceProductService = new InterfaceProductService();
+  const result = await interfaceProductService.getProductItem(req.params.productItemId, req.query);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
@@ -230,5 +231,5 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
-  getProduct,
+  getProductItem,
 };

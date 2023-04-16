@@ -1,11 +1,11 @@
 const fs = require("fs");
 const httpStatus = require("http-status");
+const { Client } = require("@elastic/elasticsearch");
 const { PrismaClient } = require("@prisma/client");
 const mongoose = require("mongoose");
 const config = require("./config");
 const logger = require("./logger");
 const prismaMiddleware = require("../middlewares/prisma");
-const { Client } = require("@elastic/elasticsearch");
 const ApiError = require("../utils/ApiError");
 
 const prismaInbound = new PrismaClient({
