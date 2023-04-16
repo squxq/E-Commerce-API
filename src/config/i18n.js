@@ -17,7 +17,8 @@ const messages = {
     successProductItemCreate: "Product Item successfully created.",
     successProductItemUpdate: "Product Item successfully updated.",
     successProductItemDelete: "Product Item successfully deleted.",
-    successProductGetSingle: "Product successfully retrieved.",
+    successProductsGet: "Products successfully retrieved.",
+    successProductItemGet: "Product Item successfully retrieved.",
   },
   // en: {
   //   profileImageRequired: "Profile image ss required, please upload an image!",

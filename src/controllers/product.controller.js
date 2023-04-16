@@ -213,13 +213,21 @@ const deleteProductItem = catchAsync(async (req, res) => {
 
 // interface
 
+const getProducts = catchAsync(async (req, res) => {
+  return res.status(httpStatus.OK).json({
+    type: "Success",
+    message: req.polyglot.t("successProductsGet"),
+    output: result,
+  });
+});
+
 const getProductItem = catchAsync(async (req, res) => {
   const interfaceProductService = new InterfaceProductService();
   const result = await interfaceProductService.getProductItem(req.params.productItemId, req.query);
 
   return res.status(httpStatus.OK).json({
     type: "Success",
-    message: req.polyglot.t("successProductGetSingle"),
+    message: req.polyglot.t("successProductItemGet"),
     output: result,
   });
 });
@@ -231,5 +239,6 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
+  getProducts,
   getProductItem,
 };

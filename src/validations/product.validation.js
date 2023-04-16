@@ -156,6 +156,8 @@ const deleteProductItem = {
 
 // interface
 
+const getProducts = {};
+
 const getProductItem = {
   params: Joi.object().keys({
     productItemId: Joi.string()
@@ -178,5 +180,6 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
+  getProduct,
   getProductItem,
 };

@@ -164,4 +164,6 @@ export class Search implements ISearch {
 
     return allItemInfo;
   }
+
+  async getProducts() {}
 }
