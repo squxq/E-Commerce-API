@@ -156,7 +156,11 @@ const deleteProductItem = {
 
 // interface
 
-const getProducts = {};
+const getProducts = {
+  query: Joi.object().keys({
+    search: Joi.string().required().label("Search Query"),
+  }),
+};
 
 const getProductItem = {
   params: Joi.object().keys({
@@ -180,6 +184,6 @@ module.exports = {
   createProductItem,
   updateProductItem,
   deleteProductItem,
-  getProduct,
+  getProducts,
   getProductItem,
 };

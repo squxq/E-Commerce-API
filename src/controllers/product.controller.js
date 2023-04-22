@@ -214,6 +214,9 @@ const deleteProductItem = catchAsync(async (req, res) => {
 // interface
 
 const getProducts = catchAsync(async (req, res) => {
+  const interfaceProductService = new InterfaceProductService();
+  const result = await interfaceProductService.getProducts(req.query.search);
+
   return res.status(httpStatus.OK).json({
     type: "Success",
     message: req.polyglot.t("successProductsGet"),

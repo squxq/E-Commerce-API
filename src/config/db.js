@@ -110,6 +110,16 @@ const elasticClient = new ElasticsearchClient({
     ca: fs.readFileSync("../../http_ca.crt"),
     rejectUnauthorized: false,
   },
+  log: {
+    type: "stdio",
+    logger: {
+      error: logger.error,
+      warning: logger.warn,
+      debug: logger.debug,
+      info: logger.info,
+    },
+    level: "info",
+  },
 });
 
 module.exports = {

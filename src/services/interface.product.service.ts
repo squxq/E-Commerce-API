@@ -1,12 +1,16 @@
+import esb from "elastic-builder";
 import httpStatus from "http-status";
 import ApiError from "../utils/ApiError";
+import { SearchResponseBody, SearchHit } from "@elastic/elasticsearch/lib/api/types";
 import { prismaInbound } from "../config/db";
 import { Currencies, FxRates } from "../models";
 import runInTransaction from "../utils/mongoTransaction";
 import convertCurrency from "../utils/currencyConverter";
+import { elasticClient } from "../config/db";
 
 interface ISearch {
   getProductItem: (itemId: string, query: { productId?: string; currency?: string }) => Promise<AllItemInfo>;
+  getProducts: () => Promise<Array<SearchHit<Product>>>;
 }
 
 interface ProductItem {
@@ -20,12 +24,23 @@ interface ProductItem {
   product_id?: string;
   category_id?: string;
   image?: string;
+  creationDate?: string | undefined;
 }
 
 interface AllItemInfo {
   item: ProductItem;
   otherItems: string[];
   categoryTree: string;
+  creationDate: string | undefined;
+}
+
+interface Product {
+  category: string;
+  name: string;
+  description: string;
+  image: string;
+  brand: string;
+  variants: Array<{ id: string; price: number }>;
 }
 
 export class Search implements ISearch {
@@ -38,7 +53,7 @@ export class Search implements ISearch {
         products = await prisma.$queryRaw`
           SELECT i.id AS item_id, CONCAT(p.brand, ' ', p.name) AS name, p.description,
             i.images AS product_item_images, i."SKU", i."QIS" AS quantity, i.price,
-            p.id AS product_id, p.category_id, p.image
+            p.id AS product_id, p.category_id, p.image, i."createdAt" AS creationDate
           FROM product AS p
           LEFT JOIN product_item AS i
           ON i.id = ${itemId}
@@ -56,7 +71,7 @@ export class Search implements ISearch {
       products = await prisma.$queryRaw`
         SELECT i.id AS item_id, CONCAT(p.brand, ' ', p.name) AS name, p.description,
           i.images AS product_item_images, i."SKU", i."QIS" AS quantity, i.price,
-          p.id AS product_id, p.category_id, p.image
+          p.id AS product_id, p.category_id, p.image, i."createdAt" AS creationDate
         FROM product_item AS i
         INNER JOIN product AS p
         ON p.id = i.product_id
@@ -93,17 +108,21 @@ export class Search implements ISearch {
           AND id != ${itemId}
       `;
 
+      const creationDate: string | undefined = products[0].creationDate;
+      delete products[0].creationDate;
+
       return {
         item: products[0],
         otherItems: otherProductItems[0]!.other_items,
         categoryTree: categoryTree[0]!.categories,
+        creationDate,
       };
     });
 
     return result;
   }
 
-  private async checkCurrency(code: string, price: string): Promise<number> {
+  private async checkCurrency(code: string, price: string, date: string | undefined): Promise<number> {
     const result = await runInTransaction(async (session) => {
       const currency = await Currencies.findOne({ code: code }, {}, { session });
       const fxRate = await FxRates.findOne(
@@ -111,10 +130,10 @@ export class Search implements ISearch {
           source_currency: "USD",
           target_currency: currency?.code,
           valid_from_date: {
-            $lte: new Date().toISOString(),
+            $lte: date,
           },
           valid_to_date: {
-            $gte: new Date().toISOString(),
+            $gte: date,
           },
         },
         {},
@@ -157,7 +176,7 @@ export class Search implements ISearch {
 
     // convert the price into the pretended currency
     if (query.currency) {
-      const price: number = await this.checkCurrency(query.currency, "" + allItemInfo.item.price);
+      const price: number = await this.checkCurrency(query.currency, "" + allItemInfo.item.price, allItemInfo.creationDate);
 
       allItemInfo.item.price = price;
     }
@@ -165,5 +184,14 @@ export class Search implements ISearch {
     return allItemInfo;
   }
 
-  async getProducts() {}
+  async getProducts() {
+    const requestBody = esb.requestBodySearch().query(esb.matchAllQuery());
+
+    const result: SearchResponseBody<Product> = await elasticClient.search({
+      index: "products",
+      ...requestBody.toJSON(),
+    });
+
+    return result.hits.hits;
+  }
 }
